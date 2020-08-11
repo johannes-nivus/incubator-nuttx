@@ -462,6 +462,16 @@ int k28_usbhost_initialize(void)
     }
 #endif
 
+#ifdef CONFIG_USBHOST_FT232R
+  /* Initialize USB FT232R support */
+
+  ret = usbhost_ft232r_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: usbhost_ft232r_initialize failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_USBHOST_CDCACM
   /* Register the CDC/ACM serial class */
 
