@@ -220,7 +220,8 @@ int up_create_stack(FAR struct tcb_s *tcb, size_t stack_size, uint8_t ttype)
       /* Save the adjusted stack values in the struct tcb_s */
 
       tcb->adj_stack_ptr  = (uint32_t *)top_of_stack;
-      tcb->adj_stack_size = size_of_stack;
+      tcb->adj_stack_size = size_of_stack -
+          sizeof(struct tls_info_s);
 
       /* Initialize the TLS data structure */
 
@@ -234,9 +235,7 @@ int up_create_stack(FAR struct tcb_s *tcb, size_t stack_size, uint8_t ttype)
 
       stack_base = (uintptr_t)tcb->stack_alloc_ptr +
                    sizeof(struct tls_info_s);
-      stack_size = tcb->adj_stack_size -
-                   sizeof(struct tls_info_s);
-      arm_stack_color((FAR void *)stack_base, stack_size);
+      arm_stack_color((FAR void *)stack_base, tcb->adj_stack_size);
 
 #endif /* CONFIG_STACK_COLORATION */
 
