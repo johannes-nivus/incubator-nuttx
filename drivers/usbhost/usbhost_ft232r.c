@@ -1268,7 +1268,7 @@ static void usbhost_rxdata_work(FAR void *arg)
 
           if (nread < 3)
             {
-              continue;
+              break;
             }
         }
 
