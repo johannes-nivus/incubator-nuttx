@@ -132,15 +132,7 @@ int k28_bringup(void)
 #ifdef CONFIG_RNDIS
   /* Register USB RNDIS Driver */
 
-  uint8_t mac[6];
-  mac[0] = (CONFIG_NETINIT_MACADDR_2 >> (8 * 1)) & 0xff;
-  mac[1] = (CONFIG_NETINIT_MACADDR_2 >> (8 * 0)) & 0xff;
-  mac[2] = (CONFIG_NETINIT_MACADDR_1 >> (8 * 3)) & 0xff;
-  mac[3] = (CONFIG_NETINIT_MACADDR_1 >> (8 * 2)) & 0xff;
-  mac[4] = (CONFIG_NETINIT_MACADDR_1 >> (8 * 1)) & 0xff;
-  mac[5] = (CONFIG_NETINIT_MACADDR_1 >> (8 * 0)) & 0xff;
-
-  ret = usbdev_rndis_initialize(mac);
+  ret = usbdev_rndis_initialize(NULL);
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: usbdev_rndis_initialize() failed %d\n", ret);
