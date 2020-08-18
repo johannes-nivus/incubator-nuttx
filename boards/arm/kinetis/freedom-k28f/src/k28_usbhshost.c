@@ -151,7 +151,7 @@ static int ehci_waiter(int argc, char *argv[])
            * But after some settling time
            */
 
-          nxsig_usleep(200 * 1000);
+          usleep(200 * 1000);
 
           CONN_ENUMERATE(g_ehciconn, hport);
         }
