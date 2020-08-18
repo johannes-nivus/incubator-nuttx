@@ -1298,7 +1298,6 @@ static void usbhost_rxdata_work(FAR void *arg)
           /* Save the updated indices */
 
           rxbuf->head = nexthead;
-          priv->rxndx = rxndx;
 
           /* Update the head point for for the next pass through the loop
            * handling. If nexthead incremented to rxbuf->tail, then the
@@ -1329,6 +1328,11 @@ static void usbhost_rxdata_work(FAR void *arg)
               uart_datareceived(uartdev);
               nxfrd = 0;
             }
+          else
+            {
+              priv->rxndx = rxndx;
+            }
+
         }
     }
 
