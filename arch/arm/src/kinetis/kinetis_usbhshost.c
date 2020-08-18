@@ -87,20 +87,19 @@
 #  error Hi-priority work queue support is required (CONFIG_SCHED_HPWORK)
 #endif
 
-/* Configurable number of Queue Head (QH) structures.  The default is one per
- * Root hub port plus one for EP0.
+/* Configurable number of Queue Head (QH) structures.  The default is 4.
  */
 
 #ifndef CONFIG_KINETIS_EHCI_NQHS
-#  define CONFIG_KINETIS_EHCI_NQHS (KINETIS_EHCI_NRHPORT + 1)
+#  define CONFIG_KINETIS_EHCI_NQHS (4)
 #endif
 
 /* Configurable number of Queue Element Transfer Descriptor (qTDs).  The
- * default is one per root hub plus three from EP0.
+ * default is 6
  */
 
 #ifndef CONFIG_KINETIS_EHCI_NQTDS
-#  define CONFIG_KINETIS_EHCI_NQTDS (KINETIS_EHCI_NRHPORT + 3)
+#  define CONFIG_KINETIS_EHCI_NQTDS (6)
 #endif
 
 /* Buffers must be aligned to the cache line size */
