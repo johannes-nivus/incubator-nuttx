@@ -219,6 +219,7 @@ struct usbhost_ft232r_s
   bool           stop2;          /* True: 2 stop bits (for line coding) */
   bool           txena;          /* True: TX "interrupts" enabled */
   bool           rxena;          /* True: RX "interrupts" enabled */
+  bool           inworker;       /* True: We're within rxworker loop */
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
   bool           iflow;          /* True: Input flow control (RTS) enabled */
   bool           rts;            /* True: Input flow control is in effect */
@@ -1203,6 +1204,12 @@ static void usbhost_rxdata_work(FAR void *arg)
    * 3. RX rec
    */
 
+  ret = usbhost_takesem(&priv->exclsem);
+  DEBUGASSERT(ret >= 0);
+  UNUSED(ret);
+
+  priv->inworker = true;
+
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
   while (priv->rxena && priv->rts && !priv->disconnected)
 #else
@@ -1224,10 +1231,16 @@ static void usbhost_rxdata_work(FAR void *arg)
 
       if (priv->nrxbytes < 1)
         {
+          usbhost_givesem(&priv->exclsem);
+
           /* No.. Read more data from the FTDI device */
 
           nread = DRVR_TRANSFER(hport->drvr, priv->bulkin,
                                 priv->inbuf, priv->pktsize);
+
+          ret = usbhost_takesem(&priv->exclsem);
+          DEBUGASSERT(ret >= 0);
+
           if (nread < 0)
             {
               /* The most likely reason for a failure is that the has no
@@ -1243,16 +1256,6 @@ static void usbhost_rxdata_work(FAR void *arg)
               break;
             }
 
-          /* Save the number of bytes read.  This might be zero if
-           * a Zero Length Packet (ZLP) is received.  The ZLP is
-           * part of the bulk transfer protocol, but otherwise of
-           * no interest to us. Alternatively it can be 2 bytes of
-           * only FTDI status information.
-           */
-
-          priv->nrxbytes = (uint16_t)nread - 2;
-          rxndx          = 0;
-
           /* When Hardware flow control is used, CTS is reported in the
            * first byte of RX payload.
            */
@@ -1264,56 +1267,72 @@ static void usbhost_rxdata_work(FAR void *arg)
             }
 #endif
 
-          /* Ignore ZLPs and RX of only FTDI status */
+          /* Save the number of bytes read.  This might be zero if
+           * a Zero Length Packet (ZLP) is received.  The ZLP is
+           * part of the bulk transfer protocol, but otherwise of
+           * no interest to us. Alternatively it can be 2 bytes of
+           * only FTDI status information.
+           */
 
-          if (nread < 3)
+          if (nread > 2)
             {
-              break;
+              priv->nrxbytes = (uint16_t)nread - 2;
             }
+          else
+            {
+              priv->nrxbytes = 0;
+            }
+
+          rxndx = 0;
         }
 
       /* Transfer one byte from the RX packet buffer into UART RX buffer.
        * +2 to account for the two status byes
        */
 
-      rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx + 2];
-      nxfrd++;
-
-      /* Save the updated indices */
-
-      rxbuf->head = nexthead;
-      priv->rxndx = rxndx;
-
-      /* Update the head point for for the next pass through the loop
-       * handling. If nexthead incremented to rxbuf->tail, then the
-       * RX buffer will and we will exit the loop at the top.
-       */
-
-      if (++nexthead >= rxbuf->size)
+      if (priv->nrxbytes > 0)
         {
-           nexthead = 0;
-        }
+          rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx + 2];
+          nxfrd++;
 
-      /* Increment the index in the USB IN packet buffer.  If the
-       * index becomes equal to the number of bytes in the buffer, then
-       * we have consumed all of the RX data.
-       */
+          /* Save the updated indices */
 
-      if (++rxndx >= priv->nrxbytes)
-        {
-          /* In that case set the number of bytes in the buffer to zero.
-           * This will force re-reading on the next time through the loop.
+          rxbuf->head = nexthead;
+          priv->rxndx = rxndx;
+
+          /* Update the head point for for the next pass through the loop
+           * handling. If nexthead incremented to rxbuf->tail, then the
+           * RX buffer will and we will exit the loop at the top.
            */
 
-          priv->nrxbytes = 0;
-          priv->rxndx    = 0;
+          if (++nexthead >= rxbuf->size)
+            {
+               nexthead = 0;
+            }
 
-          /* Inform any waiters there there is new incoming data available. */
+          /* Increment the index in the USB IN packet buffer.  If the
+           * index becomes equal to the number of bytes in the buffer, then
+           * we have consumed all of the RX data.
+           */
 
-          uart_datareceived(uartdev);
-          nxfrd = 0;
+          if (++rxndx >= priv->nrxbytes)
+            {
+              /* In that case set the number of bytes in the buffer to zero.
+               * This will force re-reading on the next time through the loop.
+               */
+
+              priv->nrxbytes = 0;
+              priv->rxndx    = 0;
+
+              /* Inform any waiters there there is new incoming data available. */
+
+              uart_datareceived(uartdev);
+              nxfrd = 0;
+            }
         }
     }
+
+  priv->inworker = false;
 
   /* We break out to here:  1) the UART RX buffer is full, 2) the FTDI
    * device is not ready to provide us with more serial data, or 3) the
@@ -1342,6 +1361,8 @@ static void usbhost_rxdata_work(FAR void *arg)
       DEBUGASSERT(ret >= 0);
       UNUSED(ret);
     }
+
+  usbhost_givesem(&priv->exclsem);
 
   /* If any bytes were added to the buffer, inform any waiters there there
    * is new incoming data available.
@@ -2549,38 +2570,47 @@ static void usbhost_rxint(FAR struct uart_dev_s *uartdev, bool enable)
   DEBUGASSERT(uartdev && uartdev->priv);
   priv = (FAR struct usbhost_ft232r_s *)uartdev->priv;
 
-  /* Are we enabling or disabling RX reception? */
-
-  if (enable && !priv->rxena)
+  if (enable != priv->rxena)
     {
-      /* Cancel any pending, delayed RX data reception work */
+      ret = usbhost_takesem(&priv->exclsem);
+      DEBUGASSERT(ret >= 0);
+      UNUSED(ret);
 
-      work_cancel(LPWORK, &priv->rxwork);
+      /* Are we enabling or disabling RX reception? */
 
-      /* Restart immediate RX data reception work (unless RX flow control
-       * is in effect.
-       */
-
-#ifdef CONFIG_SERIAL_IFLOWCONTROL
-      if (priv->rts)
-#endif
+      if (enable && !priv->inworker)
         {
-          ret = work_queue(LPWORK, &priv->rxwork,
-                           usbhost_rxdata_work, priv, 0);
-          DEBUGASSERT(ret >= 0);
-          UNUSED(ret);
+
+          /* Cancel any pending, delayed RX data reception work */
+
+          work_cancel(LPWORK, &priv->rxwork);
+
+          /* Restart immediate RX data reception work (unless RX flow control
+           * is in effect.
+           */
+
+    #ifdef CONFIG_SERIAL_IFLOWCONTROL
+          if (priv->rts)
+    #endif
+            {
+              ret = work_queue(LPWORK, &priv->rxwork,
+                               usbhost_rxdata_work, priv, 0);
+              DEBUGASSERT(ret >= 0);
+            }
         }
+      else if (!enable)
+        {
+          /* Cancel any pending RX data reception work */
+
+          work_cancel(LPWORK, &priv->rxwork);
+        }
+
+      /* Save the new RX enable state */
+
+      priv->rxena = enable;
+
+      usbhost_givesem(&priv->exclsem);
     }
-  else if (!enable && priv->rxena)
-    {
-      /* Cancel any pending RX data reception work */
-
-      work_cancel(LPWORK, &priv->rxwork);
-    }
-
-  /* Save the new RX enable state */
-
-  priv->rxena = enable;
 }
 
 /****************************************************************************
