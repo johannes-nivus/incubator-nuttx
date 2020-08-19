@@ -37,6 +37,7 @@
 #include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/clock.h>
+#include <nuttx/kthread.h>
 #include <nuttx/fs/ioctl.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/serial/serial.h>
@@ -83,17 +84,6 @@
 #  warning Removable serial device support is required (CONFIG_SERIAL_REMOVABLE)
 #endif
 
-#ifdef CONFIG_USBHOST_FT232R_RXDELAY
-#  define USBHOST_FT232R_RXDELAY MSEC2TICK(CONFIG_USBHOST_FT232R_RXDELAY)
-#else
-#  define USBHOST_FT232R_RXDELAY MSEC2TICK(200)
-#endif
-
-#ifdef CONFIG_USBHOST_FT232R_TXDELAY
-#  define USBHOST_FT232R_TXDELAY MSEC2TICK(CONFIG_USBHOST_FT232R_TXDELAY)
-#else
-#  define USBHOST_FT232R_TXDELAY MSEC2TICK(200)
-#endif
 
 /* If the create() method is called by the USB host device driver from an
  * interrupt handler, then it will be unable to call kmm_malloc() in order to
@@ -135,9 +125,25 @@
 #  define CONFIG_USBHOST_FT232R_2STOP 0
 #endif
 
-#ifndef CONFIG_USBHOST_FT232R_LATENCY
-#  define CONFIG_USBHOST_FT232R_LATENCY 16
+#ifndef CONFIG_USBHOST_FT232R_RX_LATENCY
+#  define CONFIG_USBHOST_FT232R_RX_LATENCY 16
 #endif
+
+#ifndef CONFIG_USBHOST_FT232R_TX_LATENCY
+#  define CONFIG_USBHOST_FT232R_TX_LATENCY 16
+#endif
+
+
+#ifndef CONFIG_USBHOST_FT232R_TASK_PRIO
+#  define CONFIG_USBHOST_FT232R_TASK_PRIO 100
+#endif
+
+#ifndef CONFIG_USBHOST_FT232R_TASK_STACK
+#  define CONFIG_USBHOST_FT232R_TASK_STACK 1024
+#endif
+
+#define FT232R_RX_TASK_NAME "FTDI_RX"
+#define FT232R_TX_TASK_NAME "FTDI_TX"
 
 /* Driver support ***********************************************************/
 
@@ -219,7 +225,8 @@ struct usbhost_ft232r_s
   bool           stop2;          /* True: 2 stop bits (for line coding) */
   bool           txena;          /* True: TX "interrupts" enabled */
   bool           rxena;          /* True: RX "interrupts" enabled */
-  bool           inworker;       /* True: We're within rxworker loop */
+  bool           rxrunning;      /* True: RX task running */
+  bool           txrunning;      /* True: TX task running */
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
   bool           iflow;          /* True: Input flow control (RTS) enabled */
   bool           rts;            /* True: Input flow control is in effect */
@@ -235,20 +242,19 @@ struct usbhost_ft232r_s
   uint8_t        nbits;          /* Number of bits (for line encoding) */
   uint8_t        parity;         /* Parity (for line encoding) */
   uint16_t       pktsize;        /* Allocated size of transfer buffers */
-  uint16_t       nrxbytes;       /* Number of bytes in the RX packet buffer */
-  uint16_t       rxndx;          /* Index to the next byte in the RX packet buffer */
   int16_t        crefs;          /* Reference count on the driver instance */
   int16_t        nbytes;         /* The number of bytes actually transferred */
   sem_t          exclsem;        /* Used to maintain mutual exclusive access */
   struct work_s  ntwork;         /* For asynchronous notification work */
-  struct work_s  rxwork;         /* For RX packet work */
-  struct work_s  txwork;         /* For TX packet work */
   FAR uint8_t   *ctrlreq;        /* Allocated ctrl request structure */
   FAR uint8_t   *inbuf;          /* Allocated RX buffer for the Bulk IN endpoint */
   FAR uint8_t   *outbuf;         /* Allocated TX buffer for the Bulk OUT endpoint */
   uint32_t       baud;           /* Current baud for line coding */
   usbhost_ep_t   bulkin;         /* Bulk IN endpoint */
   usbhost_ep_t   bulkout;        /* Bulk OUT endpoint */
+
+  pid_t          rxpid;          /* The RX task */
+  pid_t          txpid;          /* The TX task */
 
   /* This is the serial data buffer */
 
@@ -287,8 +293,8 @@ static inline void usbhost_mkdevname(FAR struct usbhost_ft232r_s *priv,
 
 /* UART buffer data transfer */
 
-static void usbhost_txdata_work(FAR void *arg);
-static void usbhost_rxdata_work(FAR void *arg);
+static int usbhost_txdata_task(int argc, char *argv[]);
+static int usbhost_rxdata_task(int argc, char *argv[]);
 
 /* Worker thread actions */
 
@@ -331,7 +337,6 @@ static void usbhost_detach(FAR struct uart_dev_s *uartdev);
 static int  usbhost_ioctl(FAR struct file *filep, int cmd,
               unsigned long arg);
 static void usbhost_rxint(FAR struct uart_dev_s *uartdev, bool enable);
-static bool usbhost_rxavailable(FAR struct uart_dev_s *uartdev);
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
 static bool usbhost_rxflowcontrol(FAR struct uart_dev_s *uartdev,
               unsigned int nbuffered, bool upper);
@@ -400,7 +405,7 @@ static const struct uart_ops_s g_uart_ops =
   usbhost_ioctl,         /* ioctl */
   NULL           ,       /* receive */
   usbhost_rxint,         /* rxinit */
-  usbhost_rxavailable,   /* rxavailable */
+  NULL,                  /* rxavailable */
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
   usbhost_rxflowcontrol, /* rxflowcontrol */
 #endif
@@ -427,6 +432,11 @@ static FAR struct usbhost_freestate_s *g_freelist;
  */
 
 static uint32_t g_devinuse;
+
+static sem_t                    g_exclsem; /* For mutually exclusive thread creation */
+static sem_t                    g_syncsem; /* Thread data passing interlock */
+static struct usbhost_ft232r_s *g_priv;   /* Data passed to thread */
+
 
 /****************************************************************************
  * Private Functions
@@ -1001,7 +1011,7 @@ static int ft232r_setlat(FAR struct usbhost_ft232r_s *priv)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: usbhost_txdata_work
+ * Name: usbhost_txdata_task
  *
  * Description:
  *   Send more OUT data to the attached FTDI device.
@@ -1014,7 +1024,7 @@ static int ft232r_setlat(FAR struct usbhost_ft232r_s *priv)
  *
  ****************************************************************************/
 
-static void usbhost_txdata_work(FAR void *arg)
+static int usbhost_txdata_task(int argc, char *argv[])
 {
   FAR struct usbhost_ft232r_s *priv;
   FAR struct usbhost_hubport_s *hport;
@@ -1023,168 +1033,142 @@ static void usbhost_txdata_work(FAR void *arg)
   ssize_t nwritten;
   int txndx;
   int txtail;
-  int ret;
+  int txhead;
 
-  priv = (FAR struct usbhost_ft232r_s *)arg;
-  DEBUGASSERT(priv);
-
+  priv = g_priv;
+  DEBUGASSERT(priv != NULL && priv->usbclass.hport);
   hport = priv->usbclass.hport;
-  DEBUGASSERT(hport);
+
+  priv->txrunning = true;
+
+  usbhost_givesem(&g_syncsem);
 
   uartdev = &priv->uartdev;
   txbuf   = &uartdev->xmit;
 
-  /* Do nothing if TX transmission is disabled */
+  /* Loop until we become disconnected */
 
-  if (!priv->txena)
+  while (!priv->disconnected)
     {
-      /* Terminate the work now *without* rescheduling */
-
-      return;
-    }
-
-  /* Loop until The UART TX buffer is empty (or we become disconnected) */
-
-  txtail = txbuf->tail;
-  txndx  = 0;
+      txtail = txbuf->tail;
+      txhead = txbuf->head;
 
 #ifdef CONFIG_USBHOST_FT232R_HWFLOWCTRL
-  while (txtail != txbuf->head && priv->txena &&
-          !priv->disconnected && priv->cts)
+      if (txtail != txhead && priv->txena && priv->cts)
 #else
-  while (txtail != txbuf->head && priv->txena && !priv->disconnected)
-#endif
-    {
-      /* Copy data from the UART TX buffer until either 1) the UART TX
-       * buffer has been emptied, or 2) the Bulk OUT buffer is full.
-       */
-
-      txndx = 0;
-      while (txtail != txbuf->head && txndx < priv->pktsize)
+      if (txtail != txhead && priv->txena)
+ #endif
         {
-          /* Copy the next byte */
+          /* Copy data from the UART TX buffer until either 1) the UART TX
+           * buffer has been emptied, or 2) the Bulk OUT buffer is full.
+           */
 
-          priv->outbuf[txndx] = txbuf->buffer[txtail];
-
-          /* Increment counters and indices */
-
-          txndx++;
-          if (++txtail >= txbuf->size)
+          txndx = 0;
+          while (txtail != txhead && txndx < priv->pktsize)
             {
-             txtail = 0;
+              /* Copy the next byte */
+
+              priv->outbuf[txndx] = txbuf->buffer[txtail];
+
+              /* Increment counters and indices */
+
+              txndx++;
+              if (++txtail >= txbuf->size)
+                {
+                 txtail = 0;
+                }
             }
-        }
 
-      /* Save the updated tail pointer so that it cannot be sent again */
+          /* Save the updated tail pointer so that it cannot be sent again */
 
-      txbuf->tail = txtail;
+          txbuf->tail = txtail;
 
-      /* Bytes were removed from the TX buffer.  Inform any waiters that
-       * there is space available in the TX buffer.
-       */
-
-      uart_datasent(uartdev);
-
-      /* Send the filled TX buffer to the FTDI device */
-
-      nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
-                               priv->outbuf, txndx);
-      if (nwritten < 0)
-        {
-          /* The most likely reason for a failure is that FTDI device
-           * NAK'ed our packet OR that the device has been disconnected.
-           *
-           * Just break out of the loop, rescheduling the work (unless
-           * the device is disconnected).
+          /* Bytes were removed from the TX buffer.  Inform any waiters that
+           * there is space available in the TX buffer.
            */
 
-          uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
-               (int)nwritten);
-          break;
+          uart_datasent(uartdev);
+
+          /* Send the filled TX buffer to the FTDI device */
+
+          nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
+                                   priv->outbuf, txndx);
+          if (nwritten < 0)
+            {
+              /* The most likely reason for a failure is that FTDI device
+               * NAK'ed our packet OR that the device has been disconnected.
+               */
+
+              uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
+                   (int)nwritten);
+            }
+
+          if (txtail == txhead && txndx == priv->pktsize)
+            {
+              /* Send the ZLP to the FTDI device */
+
+              txndx = 0;
+              nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
+                                       priv->outbuf, txndx);
+              if (nwritten < 0)
+                {
+                  /* The most likely reason for a failure is that FTDI device
+                   * NAK'ed our packet.
+                   */
+
+                  uerr("ERROR: DRVR_TRANSFER for ZLP failed: %d\n", (int)nwritten);
+                }
+            }
+
         }
-    }
-
-  /* We get here because: 1) the UART TX buffer is empty and there is
-   * nothing more to send, 2) the FTDI device was not ready to accept our
-   * data, or the device is no longer available.
-   *
-   * If the last packet sent was and even multiple of the packet size, then
-   * we need to send a zero length packet (ZLP).
-   */
-
-  if (txndx == priv->pktsize && !priv->disconnected)
-    {
-      /* Send the ZLP to the FTDI device */
-
-      nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
-                               priv->outbuf, 0);
-      if (nwritten < 0)
+      else
         {
-          /* The most likely reason for a failure is that FTDI device
-           * NAK'ed our packet.
-           */
-
-          uerr("ERROR: DRVR_TRANSFER for ZLP failed: %d\n", (int)nwritten);
+          /* We sleep a little */
+          nxsig_usleep(CONFIG_USBHOST_FT232R_TX_LATENCY * 1000);
         }
     }
 
-  /* Check again if TX reception is enabled and that the device is still
-   * connected.  These states could have changed since we started the
-   * transfer.
-   */
+  priv->txrunning = false;
 
-  if (priv->txena && !priv->disconnected)
-    {
-      /* Schedule TX data work to occur after a delay. */
-
-      ret = work_queue(LPWORK, &priv->txwork, usbhost_txdata_work, priv,
-                       USBHOST_FT232R_TXDELAY);
-      DEBUGASSERT(ret >= 0);
-      UNUSED(ret);
-    }
+  return 0;
 }
 
 /****************************************************************************
- * Name: usbhost_rxdata_work
+ * Name: usbhost_rxdata_task
  *
  * Description:
  *   Get more IN data from the attached FTDI device.
  *
  * Input Parameters:
- *   arg - A reference to the FTDI class private data
+ *   arg - notused
  *
  * Returned Value:
  *   None
  *
  ****************************************************************************/
 
-static void usbhost_rxdata_work(FAR void *arg)
+static int usbhost_rxdata_task(int argc, char *argv[])
 {
   FAR struct usbhost_ft232r_s *priv;
   FAR struct usbhost_hubport_s *hport;
   FAR struct uart_dev_s *uartdev;
   FAR struct uart_buffer_s *rxbuf;
   ssize_t nread;
-  int nxfrd;
   int nexthead;
   int rxndx;
-  int ret;
+  irqstate_t flags;
 
-  priv    = (FAR struct usbhost_ft232r_s *)arg;
-  DEBUGASSERT(priv);
+  priv = g_priv;
+  DEBUGASSERT(priv != NULL && priv->usbclass.hport);
+  hport = priv->usbclass.hport;
 
-  hport   = priv->usbclass.hport;
-  DEBUGASSERT(hport);
+  priv->rxrunning = true;
+  usbhost_givesem(&g_syncsem);
 
   uartdev = &priv->uartdev;
   rxbuf   = &uartdev->recv;
 
-  /* Get the index in the RX packet buffer where we will take the first
-   * byte of data.
-   */
-
-  rxndx    = priv->rxndx;
-  nxfrd    = 0;
+  nread = 0;
 
   /* Get the index to the value of the UART RX buffer head AFTER the
    * first character has been stored.  We need to know this in order
@@ -1204,178 +1188,176 @@ static void usbhost_rxdata_work(FAR void *arg)
    * 3. RX rec
    */
 
-  ret = usbhost_takesem(&priv->exclsem);
-  DEBUGASSERT(ret >= 0);
-  UNUSED(ret);
-
-  priv->inworker = true;
-
-#ifdef CONFIG_SERIAL_IFLOWCONTROL
-  while (priv->rxena && priv->rts && !priv->disconnected)
-#else
-  while (priv->rxena && !priv->disconnected)
-#endif
+  while (!priv->disconnected)
     {
       /* Stop now if there is no room for another
        * character in the RX buffer.
        */
 
-      if (nexthead == rxbuf->tail)
-        {
-          /* Break out of the loop, rescheduling the work */
-
-          break;
-        }
-
-      /* Do we have any buffer RX data to transfer? */
-
-      if (priv->nrxbytes < 1)
-        {
-          usbhost_givesem(&priv->exclsem);
-
-          /* No.. Read more data from the FTDI device */
-
-          nread = DRVR_TRANSFER(hport->drvr, priv->bulkin,
-                                priv->inbuf, priv->pktsize);
-
-          ret = usbhost_takesem(&priv->exclsem);
-          DEBUGASSERT(ret >= 0);
-
-          if (nread < 0)
-            {
-              /* The most likely reason for a failure is that the has no
-               * data available now and NAK'ed the IN token OR that the
-               * transfer was cancelled because the device was disconnected.
-               *
-               * Just break out of the loop, rescheduling the work (if the
-               * device was not disconnected.
-               */
-
-              uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
-                   (int)nread);
-              break;
-            }
-
-          /* When Hardware flow control is used, CTS is reported in the
-           * first byte of RX payload.
-           */
-
-#ifdef CONFIG_USBHOST_FT232R_HWFLOWCTRL
-          if (nread >= 2)
-            {
-              priv->cts = priv->inbuf[0] & 0x10;
-            }
-#endif
-
-          /* Save the number of bytes read.  This might be zero if
-           * a Zero Length Packet (ZLP) is received.  The ZLP is
-           * part of the bulk transfer protocol, but otherwise of
-           * no interest to us. Alternatively it can be 2 bytes of
-           * only FTDI status information.
-           */
-
-          if (nread > 2)
-            {
-              priv->nrxbytes = (uint16_t)nread - 2;
-            }
-          else
-            {
-              priv->nrxbytes = 0;
-            }
-
-          rxndx = 0;
-        }
-
-      /* Transfer one byte from the RX packet buffer into UART RX buffer.
-       * +2 to account for the two status byes
-       */
-
-      if (priv->nrxbytes > 0)
-        {
-          rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx + 2];
-          nxfrd++;
-
-          /* Save the updated indices */
-
-          rxbuf->head = nexthead;
-
-          /* Update the head point for for the next pass through the loop
-           * handling. If nexthead incremented to rxbuf->tail, then the
-           * RX buffer will and we will exit the loop at the top.
-           */
-
-          if (++nexthead >= rxbuf->size)
-            {
-               nexthead = 0;
-            }
-
-          /* Increment the index in the USB IN packet buffer.  If the
-           * index becomes equal to the number of bytes in the buffer, then
-           * we have consumed all of the RX data.
-           */
-
-          if (++rxndx >= priv->nrxbytes)
-            {
-              /* In that case set the number of bytes in the buffer to zero.
-               * This will force re-reading on the next time through the loop.
-               */
-
-              priv->nrxbytes = 0;
-              priv->rxndx    = 0;
-
-              /* Inform any waiters there there is new incoming data available. */
-
-              uart_datareceived(uartdev);
-              nxfrd = 0;
-            }
-          else
-            {
-              priv->rxndx = rxndx;
-            }
-
-        }
-    }
-
-  priv->inworker = false;
-
-  /* We break out to here:  1) the UART RX buffer is full, 2) the FTDI
-   * device is not ready to provide us with more serial data, or 3) the
-   * device has been disconnected.
-   *
-   * Check if the device is still available:  RX enabled, no RX flow
-   * control in effect, and that the device is not disconnected. These
-   * states could have changed since we started the transfer.
-   */
-
 #ifdef CONFIG_SERIAL_IFLOWCONTROL
-  if (priv->rxena && priv->rts && work_available(&priv->rxwork) &&
-      !priv->disconnected)
+      if (priv->rxena && priv->rts && nexthead != rxbuf->tail)
 #else
-  if (priv->rxena && work_available(&priv->rxwork) && !priv->disconnected)
+      if (priv->rxena && nexthead != rxbuf->tail)
 #endif
-    {
-      /* Schedule RX data reception work to occur after a delay.  This will
-       * affect our responsive in certain cases.  The delayed work, however,
-       * will be cancelled and replaced with immediate work when the upper
-       * layer demands more data.
-       */
+        {
+          /* Do we have any buffer RX data to transfer? */
 
-      ret = work_queue(LPWORK, &priv->rxwork, usbhost_rxdata_work, priv,
-                       USBHOST_FT232R_RXDELAY);
-      DEBUGASSERT(ret >= 0);
-      UNUSED(ret);
+          if (nread < 1)
+            {
+
+              /* No.. Read more data from the FTDI device */
+
+              nread = DRVR_TRANSFER(hport->drvr, priv->bulkin,
+                                    priv->inbuf, priv->pktsize);
+
+              DEBUGASSERT(ret >= 0);
+
+              if (nread < 0)
+                {
+                  /* The most likely reason for a failure is that the has no
+                   * data available now and NAK'ed the IN token OR that the
+                   * transfer was cancelled because the device was disconnected.
+                   *
+                   * Just break out of the loop, rescheduling the work (if the
+                   * device was not disconnected.
+                   */
+
+                  uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
+                       (int)nread);
+                }
+
+              /* When Hardware flow control is used, CTS is reported in the
+               * first byte of RX payload.
+               */
+
+    #ifdef CONFIG_USBHOST_FT232R_HWFLOWCTRL
+              if (nread >= 2)
+                {
+                  priv->cts = priv->inbuf[0] & 0x10;
+                }
+    #endif
+
+              /* Save the number of bytes read.  This might be zero if
+               * a Zero Length Packet (ZLP) is received.  The ZLP is
+               * part of the bulk transfer protocol, but otherwise of
+               * no interest to us. Alternatively it can be 2 bytes of
+               * only FTDI status information.
+               */
+
+              if (nread > 2)
+                {
+                  nread = nread - 2;
+                }
+              else
+                {
+                  nread = 0;
+                }
+
+              rxndx = 0;
+            }
+          else if (nread > 0)
+            {
+              /* We do else if because of recheck rxena, cts, and disconnected. */
+
+              /* Transfer one byte from the RX packet buffer into UART RX buffer.
+               * +2 to account for the two status byes
+               */
+
+              rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx + 2];
+
+              /* Save the updated indices */
+
+              rxbuf->head = nexthead;
+
+              /* Update the head point for for the next pass through the loop
+               * handling. If nexthead incremented to rxbuf->tail, then the
+               * RX buffer will and we will exit the loop at the top.
+               */
+
+              if (++nexthead >= rxbuf->size)
+                {
+                   nexthead = 0;
+                }
+
+              /* Increment the index in the USB IN packet buffer.  If the
+               * index becomes equal to the number of bytes in the buffer, then
+               * we have consumed all of the RX data.
+               */
+
+              if (++rxndx >= nread)
+                {
+                  /* In that case set the number of bytes in the buffer to zero.
+                   * This will force re-reading on the next time through the loop.
+                   */
+
+                  nread = 0;
+
+                  /* Inform any waiters there there is new incoming data available. */
+
+                  uart_datareceived(uartdev);
+                }
+            }
+        }
+      else
+        {
+          if (priv->rxena && nread > 0)
+            {
+              uart_datareceived(uartdev);
+            }
+
+          /* We sleep a little */
+          nxsig_usleep(CONFIG_USBHOST_FT232R_RX_LATENCY * 1000);
+        }
     }
 
-  usbhost_givesem(&priv->exclsem);
+  usbhost_forcetake(&priv->exclsem);
 
-  /* If any bytes were added to the buffer, inform any waiters there there
-   * is new incoming data available.
+  /* Indicate that we are no longer running and decrement the reference
+   * count held by this thread.  If there are no other users of the class,
+   * we can destroy it now.  Otherwise, we have to wait until the all
+   * of the file descriptors are closed.
    */
 
-  if (nxfrd)
+  uinfo("Disconnected, rx halted\n");
+
+  flags = enter_critical_section();
+  priv->rxrunning = false;
+
+  /* Decrement the reference count held by this thread. */
+
+  DEBUGASSERT(priv->crefs > 0);
+  priv->crefs--;
+
+  /* There are two possibilities:
+   * 1) The reference count is greater than zero.  This means that there
+   *    are still open references to the serial driver.  In this case
+   *    we need to wait until usbhost_close() is called and all of the
+   *    open driver references are decremented.  Then usbhost_destroy() can
+   *    be called from usbhost_close().
+   * 2) The reference count is now zero.  This means that there are no
+   *    further open references and we can call usbhost_destroy() now.
+   */
+
+  if (priv->crefs < 1)
     {
-      uart_datareceived(uartdev);
+      /* Unregister the driver and destroy the instance (while we hold
+       * the semaphore!)
+       */
+
+      usbhost_destroy(priv);
     }
+  else
+    {
+      /* No, we will destroy the driver instance when it is final open
+       * reference is closed
+       */
+
+      usbhost_givesem(&priv->exclsem);
+    }
+
+  leave_critical_section(flags);
+
+  return 0;
 }
 
 /****************************************************************************
@@ -2062,6 +2044,61 @@ static int usbhost_connect(FAR struct usbhost_class_s *usbclass,
       goto errout;
     }
 
+  /* The inputs to a task started by kthread_create() are very awkard for
+   * this purpose.  They are really designed for command line tasks
+   * (argc/argv).  So the following is kludge pass binary data when the
+   * rx task is started.
+   *
+   * First, make sure we have exclusive access to g_priv (what is the
+   * likelihood of this being used?  About zero, but we protect it anyway).
+   */
+
+  ret = usbhost_takesem(&g_exclsem);
+  if (ret < 0)
+    {
+      goto errout;
+    }
+
+  g_priv = priv;
+
+  /* Create rx task */
+  priv->rxpid = kthread_create(FT232R_RX_TASK_NAME, CONFIG_USBHOST_FT232R_TASK_PRIO,
+      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_rxdata_task, NULL);
+  if (priv->rxpid < 0)
+    {
+      uerr("ERROR: Create rx task failed: %d\n", ret);
+      usbhost_givesem(&g_exclsem);
+      goto errout;
+    }
+
+  ret = usbhost_takesem(&g_syncsem);
+  if (ret < 0)
+    {
+      usbhost_givesem(&g_exclsem);
+      uerr("ERROR: Init rx task failed: %d\n", ret);
+      goto errout;
+    }
+
+  /* Create rx task */
+  priv->txpid = kthread_create(FT232R_TX_TASK_NAME, CONFIG_USBHOST_FT232R_TASK_PRIO,
+      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_txdata_task, NULL);
+  if (priv->txpid < 0)
+    {
+      uerr("ERROR: Create rx task failed: %d\n", ret);
+      usbhost_givesem(&g_exclsem);
+      goto errout;
+    }
+
+  ret = usbhost_takesem(&g_syncsem);
+  if (ret < 0)
+    {
+      usbhost_givesem(&g_exclsem);
+      uerr("ERROR: Init rx task failed: %d\n", ret);
+      goto errout;
+    }
+
+  usbhost_givesem(&g_exclsem);
+
   /* Send the initial line encoding */
 
   ret = ft232r_reset(priv, true);
@@ -2178,36 +2215,34 @@ static int usbhost_disconnected(FAR struct usbhost_class_s *usbclass)
 
   uart_connected(&priv->uartdev, false);
 
-  /* Now check the number of references on the class instance.  If it is one,
-   * then we can free the class instance now.  Otherwise, we will have to
-   * wait until the holders of the references free them by closing the
-   * serial driver.
+  /* Possibilities:
+   *
+   * - Failure occurred before the kbdpoll task was started successfully.
+   *   In this case, the disconnection will have to be handled on the worker
+   *   task.
+   * - Failure occurred after the kbdpoll task was started successfully.  In
+   *   this case, the disconnection can be performed on the kbdpoll thread.
    */
 
-  uinfo("crefs: %d\n", priv->crefs);
-  if (priv->crefs == 1)
+  if (priv->rxrunning)
     {
-      /* Destroy the class instance.  If we are executing from an interrupt
-       * handler, then defer the destruction to the worker thread.
-       * Otherwise, destroy the instance now.
+      /* The rx task is still alive. Signal the rx task.
+       * When that task wakes up, it will decrement the reference count and,
+       * perhaps, destroy the class instance.  Then it will exit.
        */
 
-      if (up_interrupt_context())
-        {
-          /* Destroy the instance on the worker thread. */
+      nxsig_kill(priv->rxpid, SIGALRM);
+    }
+  else
+    {
+      /* In the case where the failure occurs before the polling task was
+       * started.  Now what?  We are probably executing from an interrupt
+       * handler here.  We will use the worker thread.  This is kind of
+       * wasteful and begs for a re-design.
+       */
 
-          uinfo("Queuing destruction: worker %p->%p\n",
-                priv->ntwork.worker, usbhost_destroy);
-
-          DEBUGASSERT(work_available(&priv->ntwork));
-          work_queue(HPWORK, &priv->ntwork, usbhost_destroy, priv, 0);
-        }
-      else
-        {
-          /* Do the work now */
-
-          usbhost_destroy(priv);
-        }
+      DEBUGASSERT(work_available(&priv->ntwork));
+      work_queue(HPWORK, &priv->ntwork, usbhost_destroy, priv, 0);
     }
 
   leave_critical_section(flags);
@@ -2569,69 +2604,22 @@ static int usbhost_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 static void usbhost_rxint(FAR struct uart_dev_s *uartdev, bool enable)
 {
   FAR struct usbhost_ft232r_s *priv;
-  int ret;
+  irqstate_t flags;
 
   DEBUGASSERT(uartdev && uartdev->priv);
   priv = (FAR struct usbhost_ft232r_s *)uartdev->priv;
 
   if (enable != priv->rxena)
     {
-      ret = usbhost_takesem(&priv->exclsem);
-      DEBUGASSERT(ret >= 0);
-      UNUSED(ret);
-
-      /* Are we enabling or disabling RX reception? */
-
-      if (enable && !priv->inworker)
-        {
-
-          /* Cancel any pending, delayed RX data reception work */
-
-          work_cancel(LPWORK, &priv->rxwork);
-
-          /* Restart immediate RX data reception work (unless RX flow control
-           * is in effect.
-           */
-
-    #ifdef CONFIG_SERIAL_IFLOWCONTROL
-          if (priv->rts)
-    #endif
-            {
-              ret = work_queue(LPWORK, &priv->rxwork,
-                               usbhost_rxdata_work, priv, 0);
-              DEBUGASSERT(ret >= 0);
-            }
-        }
-      else if (!enable)
-        {
-          /* Cancel any pending RX data reception work */
-
-          work_cancel(LPWORK, &priv->rxwork);
-        }
-
-      /* Save the new RX enable state */
-
+      flags = enter_critical_section();
       priv->rxena = enable;
-
-      usbhost_givesem(&priv->exclsem);
+      if (priv->rxrunning)
+        {
+          /* The rx task is still alive. Signal the rx task. */
+          nxsig_kill(priv->rxpid, SIGALRM);
+        }
+      leave_critical_section(flags);
     }
-}
-
-/****************************************************************************
- * Name: usbhost_rxavailable
- *
- * Description:
- *   Return true if the receive buffer is not empty
- *
- ****************************************************************************/
-
-static bool usbhost_rxavailable(FAR struct uart_dev_s *uartdev)
-{
-  FAR struct usbhost_ft232r_s *priv;
-
-  DEBUGASSERT(uartdev && uartdev->priv);
-  priv = (FAR struct usbhost_ft232r_s *)uartdev->priv;
-  return (priv->nrxbytes > 0);
 }
 
 /****************************************************************************
@@ -2691,7 +2679,11 @@ static bool usbhost_rxflowcontrol(FAR struct uart_dev_s *uartdev,
 
       /* Cancel any pending RX data reception work */
 
-      work_cancel(LPWORK, &priv->rxwork);
+      if (priv->rxrunning)
+        {
+          /* The rx task is still alive. Signal the rx task. */
+          nxsig_kill(priv->rxpid, SIGALRM);
+        }
       return true;
     }
   else if (!priv->rts && !upper)
@@ -2703,17 +2695,11 @@ static bool usbhost_rxflowcontrol(FAR struct uart_dev_s *uartdev,
 
        priv->rts = true;
 
-      /* Restart RX data reception work flow unless RX reception is
-       * disabled.
-       */
-
-      if (priv->rxena && work_available(&priv->rxwork))
-        {
-          ret = work_queue(LPWORK, &priv->rxwork,
-                           usbhost_rxdata_work, priv, 0);
-          DEBUGASSERT(ret >= 0);
-          UNUSED(ret);
-        }
+       if (priv->rxrunning)
+         {
+           /* The rx task is still alive. Signal the rx task. */
+           nxsig_kill(priv->rxpid, SIGALRM);
+         }
 
       return false;
     }
@@ -2731,36 +2717,36 @@ static bool usbhost_rxflowcontrol(FAR struct uart_dev_s *uartdev,
 static void usbhost_txint(FAR struct uart_dev_s *uartdev, bool enable)
 {
   FAR struct usbhost_ft232r_s *priv;
-  int ret;
+  FAR struct uart_buffer_s *txbuf;
+  int16_t available;
+  irqstate_t flags;
+
 
   DEBUGASSERT(uartdev && uartdev->priv);
-  priv = (FAR struct usbhost_ft232r_s *)uartdev->priv;
+  priv  = (FAR struct usbhost_ft232r_s *)uartdev->priv;
+  txbuf = &uartdev->xmit;
 
   /* Are we enabling or disabling TX transmission? */
 
-  if (enable && !priv->txena)
-    {
-      /* Cancel any pending, delayed TX data transmission work */
-
-      work_cancel(LPWORK, &priv->txwork);
-
-      /* Restart immediate TX data transmission work */
-
-      ret = work_queue(LPWORK, &priv->txwork,
-                       usbhost_txdata_work, priv, 0);
-      DEBUGASSERT(ret >= 0);
-      UNUSED(ret);
-    }
-  else if (!enable && priv->txena)
-    {
-      /* Cancel any pending TX data transmission work */
-
-      work_cancel(LPWORK, &priv->txwork);
-    }
-
-  /* Save the new TX enable state */
-
+  flags = enter_critical_section();
   priv->txena = enable;
+
+  if(enable)
+    {
+      available = txbuf->head - txbuf->tail;
+
+      if (available < 0)
+        {
+          available += txbuf->size;
+        }
+
+      if(available >= priv->pktsize && priv->txrunning)
+        {
+          /* The tx task is still alive. Signal the tx task. */
+          nxsig_kill(priv->txpid, SIGALRM);
+        }
+    }
+  leave_critical_section(flags);
 }
 
 /****************************************************************************
@@ -2829,6 +2815,15 @@ int usbhost_ft232r_initialize(void)
       g_freelist   = entry;
     }
 #endif
+
+  nxsem_init(&g_exclsem, 0, 1);
+  nxsem_init(&g_syncsem, 0, 0);
+
+  /* The g_syncsem semaphore is used for signaling and, hence, should not
+   * have priority inheritance enabled.
+   */
+
+  nxsem_set_protocol(&g_syncsem, SEM_PRIO_NONE);
 
   /* Advertise our availability to support (certain) FTDI devices */
 
