@@ -72,12 +72,6 @@
 #  ifndef CONFIG_SCHED_HPWORK
 #    warning High priority work thread support is required (CONFIG_SCHED_HPWORK)
 #  endif
-#  ifndef CONFIG_SCHED_LPWORK
-#    warning Low priority work thread support is required (CONFIG_SCHED_LPWORK)
-#  endif
-#  if CONFIG_SCHED_LPNTHREADS < 2
-#    warning Multiple low priority work threads recommended for performance (CONFIG_SCHED_LPNTHREADS > 1)
-#  endif
 #endif
 
 #ifndef CONFIG_SERIAL_REMOVABLE
@@ -125,17 +119,16 @@
 #  define CONFIG_USBHOST_FT232R_2STOP 0
 #endif
 
-#ifndef CONFIG_USBHOST_FT232R_RX_LATENCY
-#  define CONFIG_USBHOST_FT232R_RX_LATENCY 16
+#ifndef CONFIG_USBHOST_FT232R_RXDELAY
+#  define CONFIG_USBHOST_FT232R_RXDELAY 16
 #endif
 
-#ifndef CONFIG_USBHOST_FT232R_TX_LATENCY
-#  define CONFIG_USBHOST_FT232R_TX_LATENCY 16
+#ifndef CONFIG_USBHOST_FT232R_TXDELAY
+#  define CONFIG_USBHOST_FT232R_TXDELAY 16
 #endif
-
 
 #ifndef CONFIG_USBHOST_FT232R_TASK_PRIO
-#  define CONFIG_USBHOST_FT232R_TASK_PRIO 100
+#  define CONFIG_USBHOST_FT232R_TASK_PRIO CONFIG_SCHED_LPWORKPRIORITY
 #endif
 
 #ifndef CONFIG_USBHOST_FT232R_TASK_STACK
@@ -433,14 +426,57 @@ static FAR struct usbhost_freestate_s *g_freelist;
 
 static uint32_t g_devinuse;
 
-static sem_t                    g_exclsem; /* For mutually exclusive thread creation */
-static sem_t                    g_syncsem; /* Thread data passing interlock */
-static struct usbhost_ft232r_s *g_priv;   /* Data passed to thread */
-
-
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: usbhost_uintptr_encode
+ *
+ * Description:
+ *   encode uintptr_t to ascii
+ *
+ ****************************************************************************/
+
+static void usbhost_uintptr_encode(uintptr_t in, FAR char *out)
+{
+  size_t    i;
+  size_t    len;
+  int       shift;
+
+  len = sizeof(uintptr_t) * 2;
+
+  for (i = shift = 0; i < len; i++, shift += 4)
+    {
+      out[i] = ((in >> shift) & 0xF) + 'a';
+    }
+  out[i] = '\0';
+}
+
+/****************************************************************************
+ * Name: usbhost_uintptr_decode
+ *
+ * Description:
+ *   decode uintptr_t from ascii
+ *
+ ****************************************************************************/
+
+static uintptr_t usbhost_uintptr_decode(FAR const char *in)
+{
+  size_t    i;
+  size_t    len;
+  int       shift;
+  uintptr_t out;
+
+  len = sizeof(uintptr_t) * 2;
+
+  for (out = i = shift = 0; i < len; i++, shift += 4)
+    {
+      out |= ((uintptr_t)(in[i] - 'a') << shift);
+    }
+
+  return out;
+}
 
 /****************************************************************************
  * Name: usbhost_takesem
@@ -1034,19 +1070,23 @@ static int usbhost_txdata_task(int argc, char *argv[])
   int txndx;
   int txtail;
   int txhead;
+  irqstate_t flags;
 
-  priv = g_priv;
+  DEBUGASSERT(argc == 2);
+
+  priv = (struct usbhost_ft232r_s *)usbhost_uintptr_decode(argv[1]);
   DEBUGASSERT(priv != NULL && priv->usbclass.hport);
+
   hport = priv->usbclass.hport;
 
   priv->txrunning = true;
-
-  usbhost_givesem(&g_syncsem);
 
   uartdev = &priv->uartdev;
   txbuf   = &uartdev->xmit;
 
   /* Loop until we become disconnected */
+
+  flags = enter_critical_section();
 
   while (!priv->disconnected)
     {
@@ -1089,6 +1129,8 @@ static int usbhost_txdata_task(int argc, char *argv[])
 
           uart_datasent(uartdev);
 
+          leave_critical_section(flags);
+
           /* Send the filled TX buffer to the FTDI device */
 
           nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
@@ -1120,15 +1162,18 @@ static int usbhost_txdata_task(int argc, char *argv[])
                 }
             }
 
+          flags = enter_critical_section();
         }
       else
         {
           /* We sleep a little */
-          nxsig_usleep(CONFIG_USBHOST_FT232R_TX_LATENCY * 1000);
+          nxsig_usleep(CONFIG_USBHOST_FT232R_TXDELAY * 1000);
         }
     }
 
   priv->txrunning = false;
+
+  leave_critical_section(flags);
 
   return 0;
 }
@@ -1158,12 +1203,14 @@ static int usbhost_rxdata_task(int argc, char *argv[])
   int rxndx;
   irqstate_t flags;
 
-  priv = g_priv;
+  DEBUGASSERT(argc == 2);
+
+  priv = (struct usbhost_ft232r_s *)usbhost_uintptr_decode(argv[1]);
   DEBUGASSERT(priv != NULL && priv->usbclass.hport);
+
   hport = priv->usbclass.hport;
 
   priv->rxrunning = true;
-  usbhost_givesem(&g_syncsem);
 
   uartdev = &priv->uartdev;
   rxbuf   = &uartdev->recv;
@@ -1188,6 +1235,8 @@ static int usbhost_rxdata_task(int argc, char *argv[])
    * 3. RX rec
    */
 
+  flags = enter_critical_section();
+
   while (!priv->disconnected)
     {
       /* Stop now if there is no room for another
@@ -1204,22 +1253,18 @@ static int usbhost_rxdata_task(int argc, char *argv[])
 
           if (nread < 1)
             {
-
               /* No.. Read more data from the FTDI device */
+
+              leave_critical_section(flags);
 
               nread = DRVR_TRANSFER(hport->drvr, priv->bulkin,
                                     priv->inbuf, priv->pktsize);
-
-              DEBUGASSERT(ret >= 0);
 
               if (nread < 0)
                 {
                   /* The most likely reason for a failure is that the has no
                    * data available now and NAK'ed the IN token OR that the
                    * transfer was cancelled because the device was disconnected.
-                   *
-                   * Just break out of the loop, rescheduling the work (if the
-                   * device was not disconnected.
                    */
 
                   uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
@@ -1254,8 +1299,10 @@ static int usbhost_rxdata_task(int argc, char *argv[])
                 }
 
               rxndx = 0;
+
+              flags = enter_critical_section();
             }
-          else if (nread > 0)
+          else if (rxndx < nread)
             {
               /* We do else if because of recheck rxena, cts, and disconnected. */
 
@@ -1290,23 +1337,20 @@ static int usbhost_rxdata_task(int argc, char *argv[])
                    * This will force re-reading on the next time through the loop.
                    */
 
-                  nread = 0;
-
-                  /* Inform any waiters there there is new incoming data available. */
-
+                  /* Inform any waiters that there is new incoming data available. */
                   uart_datareceived(uartdev);
                 }
             }
         }
       else
         {
-          if (priv->rxena && nread > 0)
+          if (priv->rxena && rxndx < nread)
             {
               uart_datareceived(uartdev);
             }
 
           /* We sleep a little */
-          nxsig_usleep(CONFIG_USBHOST_FT232R_RX_LATENCY * 1000);
+          nxsig_usleep(CONFIG_USBHOST_FT232R_RXDELAY * 1000);
         }
     }
 
@@ -1320,7 +1364,6 @@ static int usbhost_rxdata_task(int argc, char *argv[])
 
   uinfo("Disconnected, rx halted\n");
 
-  flags = enter_critical_section();
   priv->rxrunning = false;
 
   /* Decrement the reference count held by this thread. */
@@ -2006,6 +2049,8 @@ static int usbhost_connect(FAR struct usbhost_class_s *usbclass,
                   (FAR struct usbhost_ft232r_s *)usbclass;
   char devname[DEV_NAMELEN];
   int ret;
+  char arg0[sizeof(uintptr_t) * 2 + 1];
+  FAR char *argv[2];
 
   DEBUGASSERT(priv != NULL &&
               configdesc != NULL &&
@@ -2044,60 +2089,28 @@ static int usbhost_connect(FAR struct usbhost_class_s *usbclass,
       goto errout;
     }
 
-  /* The inputs to a task started by kthread_create() are very awkard for
-   * this purpose.  They are really designed for command line tasks
-   * (argc/argv).  So the following is kludge pass binary data when the
-   * rx task is started.
-   *
-   * First, make sure we have exclusive access to g_priv (what is the
-   * likelihood of this being used?  About zero, but we protect it anyway).
-   */
+  usbhost_uintptr_encode((uintptr_t)priv, (FAR char *)arg0);
 
-  ret = usbhost_takesem(&g_exclsem);
-  if (ret < 0)
-    {
-      goto errout;
-    }
-
-  g_priv = priv;
+  argv[0] = (FAR char *)arg0;
+  argv[1] = NULL;
 
   /* Create rx task */
   priv->rxpid = kthread_create(FT232R_RX_TASK_NAME, CONFIG_USBHOST_FT232R_TASK_PRIO,
-      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_rxdata_task, NULL);
+      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_rxdata_task, argv);
   if (priv->rxpid < 0)
     {
       uerr("ERROR: Create rx task failed: %d\n", ret);
-      usbhost_givesem(&g_exclsem);
-      goto errout;
-    }
-
-  ret = usbhost_takesem(&g_syncsem);
-  if (ret < 0)
-    {
-      usbhost_givesem(&g_exclsem);
-      uerr("ERROR: Init rx task failed: %d\n", ret);
       goto errout;
     }
 
   /* Create rx task */
   priv->txpid = kthread_create(FT232R_TX_TASK_NAME, CONFIG_USBHOST_FT232R_TASK_PRIO,
-      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_txdata_task, NULL);
+      CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_txdata_task, argv);
   if (priv->txpid < 0)
     {
-      uerr("ERROR: Create rx task failed: %d\n", ret);
-      usbhost_givesem(&g_exclsem);
+      uerr("ERROR: Create tx task failed: %d\n", ret);
       goto errout;
     }
-
-  ret = usbhost_takesem(&g_syncsem);
-  if (ret < 0)
-    {
-      usbhost_givesem(&g_exclsem);
-      uerr("ERROR: Init rx task failed: %d\n", ret);
-      goto errout;
-    }
-
-  usbhost_givesem(&g_exclsem);
 
   /* Send the initial line encoding */
 
@@ -2427,7 +2440,7 @@ static int usbhost_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
   if (priv->disconnected)
     {
-      /* No... the serial device has been disconnecgted.  Refuse to process
+      /* No... the serial device has been disconnected.  Refuse to process
        * any ioctl commands.
        */
 
@@ -2613,7 +2626,8 @@ static void usbhost_rxint(FAR struct uart_dev_s *uartdev, bool enable)
     {
       flags = enter_critical_section();
       priv->rxena = enable;
-      if (priv->rxrunning)
+
+      if(enable && priv->rxrunning)
         {
           /* The rx task is still alive. Signal the rx task. */
           nxsig_kill(priv->rxpid, SIGALRM);
@@ -2728,25 +2742,28 @@ static void usbhost_txint(FAR struct uart_dev_s *uartdev, bool enable)
 
   /* Are we enabling or disabling TX transmission? */
 
-  flags = enter_critical_section();
-  priv->txena = enable;
-
-  if(enable)
+  if (enable != priv->txena)
     {
-      available = txbuf->head - txbuf->tail;
+      flags = enter_critical_section();
+      priv->txena = enable;
 
-      if (available < 0)
+      if(enable)
         {
-          available += txbuf->size;
-        }
+          available = txbuf->head - txbuf->tail;
 
-      if(available >= priv->pktsize && priv->txrunning)
-        {
-          /* The tx task is still alive. Signal the tx task. */
-          nxsig_kill(priv->txpid, SIGALRM);
+          if (available < 0)
+            {
+              available += txbuf->size;
+            }
+
+          if(available >= priv->pktsize && priv->txrunning)
+            {
+              /* The tx task is still alive. Signal the tx task. */
+              nxsig_kill(priv->txpid, SIGALRM);
+            }
         }
+      leave_critical_section(flags);
     }
-  leave_critical_section(flags);
 }
 
 /****************************************************************************
@@ -2815,15 +2832,6 @@ int usbhost_ft232r_initialize(void)
       g_freelist   = entry;
     }
 #endif
-
-  nxsem_init(&g_exclsem, 0, 1);
-  nxsem_init(&g_syncsem, 0, 0);
-
-  /* The g_syncsem semaphore is used for signaling and, hence, should not
-   * have priority inheritance enabled.
-   */
-
-  nxsem_set_protocol(&g_syncsem, SEM_PRIO_NONE);
 
   /* Advertise our availability to support (certain) FTDI devices */
 
