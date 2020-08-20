@@ -1152,29 +1152,13 @@ static int usbhost_txdata_task(int argc, char *argv[])
               uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
                    (int)nwritten);
             }
-#if 0
-          if (txtail == txhead && txndx == priv->pktsize)
-            {
-              /* Send the ZLP to the FTDI device */
 
-              txndx = 0;
-              nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
-                                       priv->outbuf, txndx);
-              if (nwritten < 0)
-                {
-                  /* The most likely reason for a failure is that FTDI device
-                   * NAK'ed our packet.
-                   */
-
-                  uerr("ERROR: DRVR_TRANSFER for ZLP failed: %d\n", (int)nwritten);
-                }
-            }
-#endif
           flags = enter_critical_section();
         }
       else
         {
           /* We sleep a little */
+
           nxsig_usleep(CONFIG_USBHOST_FT232R_TXDELAY * 1000);
         }
     }
