@@ -128,11 +128,11 @@
 #endif
 
 #ifndef CONFIG_USBHOST_FT232R_TASK_PRIO
-#  define CONFIG_USBHOST_FT232R_TASK_PRIO CONFIG_SCHED_LPWORKPRIORITY
+#  define CONFIG_USBHOST_FT232R_TASK_PRIO (CONFIG_SCHED_LPWORKPRIORITY + 1)
 #endif
 
 #ifndef CONFIG_USBHOST_FT232R_TASK_STACK
-#  define CONFIG_USBHOST_FT232R_TASK_STACK 1024
+#  define CONFIG_USBHOST_FT232R_TASK_STACK 2048
 #endif
 
 #define FT232R_RX_TASK_NAME "FTDI_RX"
@@ -438,19 +438,26 @@ static uint32_t g_devinuse;
  *
  ****************************************************************************/
 
-static void usbhost_uintptr_encode(uintptr_t in, FAR char *out)
+static int usbhost_uintptr_encode(uintptr_t in, FAR char *out, size_t outlen)
 {
-  size_t    i;
-  size_t    len;
-  int       shift;
+  int i;
+  int len;
+  int shift;
 
   len = sizeof(uintptr_t) * 2;
+
+  if (outlen <= len)
+    {
+      return ERROR;
+    }
 
   for (i = shift = 0; i < len; i++, shift += 4)
     {
       out[i] = ((in >> shift) & 0xF) + 'a';
     }
   out[i] = '\0';
+
+  return OK;
 }
 
 /****************************************************************************
@@ -463,9 +470,9 @@ static void usbhost_uintptr_encode(uintptr_t in, FAR char *out)
 
 static uintptr_t usbhost_uintptr_decode(FAR const char *in)
 {
-  size_t    i;
-  size_t    len;
-  int       shift;
+  int i;
+  int len;
+  int shift;
   uintptr_t out;
 
   len = sizeof(uintptr_t) * 2;
@@ -1173,6 +1180,13 @@ static int usbhost_txdata_task(int argc, char *argv[])
 
   priv->txrunning = false;
 
+  if (priv->rxrunning)
+    {
+      /* Signal we are terminating */
+
+      nxsig_kill(priv->rxpid, SIGALRM);
+    }
+
   leave_critical_section(flags);
 
   return 0;
@@ -1216,6 +1230,7 @@ static int usbhost_rxdata_task(int argc, char *argv[])
   rxbuf   = &uartdev->recv;
 
   nread = 0;
+  rxndx = 0;
 
   /* Get the index to the value of the UART RX buffer head AFTER the
    * first character has been stored.  We need to know this in order
@@ -1251,7 +1266,7 @@ static int usbhost_rxdata_task(int argc, char *argv[])
         {
           /* Do we have any buffer RX data to transfer? */
 
-          if (nread < 1)
+          if (rxndx == nread)
             {
               /* No.. Read more data from the FTDI device */
 
@@ -1351,6 +1366,18 @@ static int usbhost_rxdata_task(int argc, char *argv[])
 
           /* We sleep a little */
           nxsig_usleep(CONFIG_USBHOST_FT232R_RXDELAY * 1000);
+        }
+    }
+
+  if (priv->txrunning)
+    {
+      /* Signal tx task */
+      nxsig_kill(priv->txpid, SIGALRM);
+
+      /* Wait until terminated */
+      while (priv->txrunning)
+        {
+          nxsig_usleep(10 * 1000);
         }
     }
 
@@ -2089,7 +2116,7 @@ static int usbhost_connect(FAR struct usbhost_class_s *usbclass,
       goto errout;
     }
 
-  usbhost_uintptr_encode((uintptr_t)priv, (FAR char *)arg0);
+  usbhost_uintptr_encode((uintptr_t)priv, (FAR char *)arg0, sizeof(arg0));
 
   argv[0] = (FAR char *)arg0;
   argv[1] = NULL;
