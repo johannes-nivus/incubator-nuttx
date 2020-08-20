@@ -1111,6 +1111,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
            */
 
           txndx = 0;
+
           while (txtail != txhead && txndx < priv->pktsize)
             {
               /* Copy the next byte */
@@ -1151,7 +1152,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
               uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
                    (int)nwritten);
             }
-
+#if 0
           if (txtail == txhead && txndx == priv->pktsize)
             {
               /* Send the ZLP to the FTDI device */
@@ -1168,7 +1169,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
                   uerr("ERROR: DRVR_TRANSFER for ZLP failed: %d\n", (int)nwritten);
                 }
             }
-
+#endif
           flags = enter_critical_section();
         }
       else
