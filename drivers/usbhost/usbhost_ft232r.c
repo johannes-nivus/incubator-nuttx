@@ -2115,7 +2115,7 @@ static int usbhost_connect(FAR struct usbhost_class_s *usbclass,
       goto errout;
     }
 
-  /* Create rx task */
+  /* Create tx task */
   priv->txpid = kthread_create(FT232R_TX_TASK_NAME, CONFIG_USBHOST_FT232R_TASK_PRIO,
       CONFIG_USBHOST_FT232R_TASK_STACK, (main_t )usbhost_txdata_task, argv);
   if (priv->txpid < 0)
