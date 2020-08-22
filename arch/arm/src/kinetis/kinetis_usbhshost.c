@@ -87,8 +87,7 @@
 #  error Hi-priority work queue support is required (CONFIG_SCHED_HPWORK)
 #endif
 
-/* Configurable number of Queue Head (QH) structures.  The default is 4.
- */
+/* Configurable number of Queue Head (QH) structures.  The default is 4. */
 
 #ifndef CONFIG_KINETIS_EHCI_NQHS
 #  define CONFIG_KINETIS_EHCI_NQHS (4)
