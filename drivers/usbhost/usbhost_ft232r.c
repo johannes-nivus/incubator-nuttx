@@ -1304,7 +1304,7 @@ static int usbhost_rxdata_task(int argc, char *argv[])
             }
           else if (rxndx < nread)
             {
-              /* We do else if because of recheck rxena, cts, and disconnected. */
+              /* We do else if because of recheck rxena, rts, and disconnected. */
 
               /* Transfer one byte from the RX packet buffer into UART RX buffer.
                * +2 to account for the two status byes
