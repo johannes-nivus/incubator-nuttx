@@ -135,6 +135,14 @@
 #  define CONFIG_USBHOST_FT232R_TASK_STACK 2048
 #endif
 
+#ifndef CONFIG_USBHOST_FT232R_TX_THRESHOLD
+#  define CONFIG_USBHOST_FT232R_TX_THRESHOLD 64
+#endif
+
+#ifndef CONFIG_USBHOST_FT232R_TASK_STACK
+#  define CONFIG_USBHOST_FT232R_TASK_STACK 2048
+#endif
+
 #define FT232R_RX_TASK_NAME "FTDI_RX"
 #define FT232R_TX_TASK_NAME "FTDI_TX"
 
@@ -1139,18 +1147,22 @@ static int usbhost_txdata_task(int argc, char *argv[])
 
           leave_critical_section(flags);
 
-          /* Send the filled TX buffer to the FTDI device */
-
-          nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
-                                   priv->outbuf, txndx);
-          if (nwritten < 0)
+          if (txndx >= priv->pktsize ||
+              txndx >= CONFIG_USBHOST_FT232R_TX_THRESHOLD)
             {
-              /* The most likely reason for a failure is that FTDI device
-               * NAK'ed our packet OR that the device has been disconnected.
-               */
+              /* Send the filled TX buffer to the FTDI device */
 
-              uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
-                   (int)nwritten);
+              nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
+                                       priv->outbuf, txndx);
+              if (nwritten < 0)
+                {
+                  /* The most likely reason for a failure is that FTDI device
+                   * NAK'ed our packet OR that the device has been disconnected.
+                   */
+
+                  uerr("ERROR: DRVR_TRANSFER for packet failed: %d\n",
+                       (int)nwritten);
+                }
             }
 
           flags = enter_critical_section();
@@ -1354,16 +1366,10 @@ static int usbhost_rxdata_task(int argc, char *argv[])
         }
     }
 
-  if (priv->txrunning)
+  /* Wait until tx task terminated */
+  while (priv->txrunning)
     {
-      /* Signal tx task */
-      nxsig_kill(priv->txpid, SIGALRM);
-
-      /* Wait until terminated */
-      while (priv->txrunning)
-        {
-          nxsig_usleep(10 * 1000);
-        }
+      nxsig_usleep(10 * 1000);
     }
 
   usbhost_forcetake(&priv->exclsem);
@@ -2240,6 +2246,15 @@ static int usbhost_disconnected(FAR struct usbhost_class_s *usbclass)
 
   uart_connected(&priv->uartdev, false);
 
+  if (priv->txrunning)
+    {
+      /* The tx task is still alive. Signal the tx task.
+       * When that task wakes up, it will exit.
+       */
+
+      nxsig_kill(priv->txpid, SIGALRM);
+    }
+
   /* Possibilities:
    *
    * - Failure occurred before the kbdpoll task was started successfully.
@@ -2759,7 +2774,7 @@ static void usbhost_txint(FAR struct uart_dev_s *uartdev, bool enable)
       flags = enter_critical_section();
       priv->txena = enable;
 
-      if(enable)
+      if(enable && priv->txrunning)
         {
           available = txbuf->head - txbuf->tail;
 
@@ -2768,7 +2783,8 @@ static void usbhost_txint(FAR struct uart_dev_s *uartdev, bool enable)
               available += txbuf->size;
             }
 
-          if(available >= priv->pktsize && priv->txrunning)
+          if((available >= priv->pktsize ||
+              available >= CONFIG_USBHOST_FT232R_TX_THRESHOLD))
             {
               /* The tx task is still alive. Signal the tx task. */
               nxsig_kill(priv->txpid, SIGALRM);
