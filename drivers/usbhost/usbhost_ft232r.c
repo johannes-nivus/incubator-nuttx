@@ -1085,6 +1085,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
   int txndx;
   int txtail;
   int txhead;
+  bool waited;
   irqstate_t flags;
 
   DEBUGASSERT(argc == 2);
@@ -1095,6 +1096,8 @@ static int usbhost_txdata_task(int argc, char *argv[])
   hport = priv->usbclass.hport;
 
   priv->txrunning = true;
+
+  waited = false;
 
   uartdev = &priv->uartdev;
   txbuf   = &uartdev->xmit;
@@ -1148,12 +1151,15 @@ static int usbhost_txdata_task(int argc, char *argv[])
           leave_critical_section(flags);
 
           if (txndx >= priv->pktsize ||
-              txndx >= CONFIG_USBHOST_FT232R_TX_THRESHOLD)
+              txndx >= CONFIG_USBHOST_FT232R_TX_THRESHOLD ||
+              waited)
             {
               /* Send the filled TX buffer to the FTDI device */
 
+              waited   = false;
               nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
                                        priv->outbuf, txndx);
+
               if (nwritten < 0)
                 {
                   /* The most likely reason for a failure is that FTDI device
@@ -1171,6 +1177,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
         {
           /* We sleep a little */
 
+          waited = true;
           nxsig_usleep(CONFIG_USBHOST_FT232R_TXDELAY * 1000);
         }
     }
@@ -2246,15 +2253,6 @@ static int usbhost_disconnected(FAR struct usbhost_class_s *usbclass)
 
   uart_connected(&priv->uartdev, false);
 
-  if (priv->txrunning)
-    {
-      /* The tx task is still alive. Signal the tx task.
-       * When that task wakes up, it will exit.
-       */
-
-      nxsig_kill(priv->txpid, SIGALRM);
-    }
-
   /* Possibilities:
    *
    * - Failure occurred before the kbdpoll task was started successfully.
@@ -2268,10 +2266,23 @@ static int usbhost_disconnected(FAR struct usbhost_class_s *usbclass)
     {
       /* The rx task is still alive. Signal the rx task.
        * When that task wakes up, it will decrement the reference count and,
-       * perhaps, destroy the class instance.  Then it will exit.
+       * perhaps, destroy the class instance. Then it will exit.
        */
 
-      nxsig_kill(priv->rxpid, SIGALRM);
+      if (priv->txrunning)
+        {
+          /* The tx task is still alive. Signal the tx task.
+           * When that task wakes up, it will signal rx task and exit.
+           */
+
+          nxsig_kill(priv->txpid, SIGALRM);
+        }
+      else
+        {
+          /* Signal rx task directly. */
+
+          nxsig_kill(priv->rxpid, SIGALRM);
+        }
     }
   else
     {
