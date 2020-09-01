@@ -1159,15 +1159,10 @@ static struct kinetis_qh_s *kinetis_qh_alloc(void)
 
 static void kinetis_qh_aawait(struct kinetis_qh_s *qh)
 {
-  uint32_t regval;
-
   /* Put the QH structure to the aawait list */
 
   qh->flink  = g_ehci.qhaawait;
   g_ehci.qhaawait = qh;
-
-  regval = kinetis_getreg(&HCOR->usbcmd);
-  kinetis_putreg(regval | EHCI_USBCMD_IAADB, &HCOR->usbcmd);
 }
 
 /************************************************************************************
@@ -2823,6 +2818,48 @@ static int kinetis_qtd_ioccheck(struct kinetis_qtd_s *qtd, uint32_t **bp,
 }
 
 /************************************************************************************
+ * Name: kinetis_qh_unlink
+ *
+ * Description:
+ *   This function unlinks the queue heads stored in the intermediate qhunlink_p
+ *   list. All horizontal link pointers are set to next valid qh after the last qh
+ *   to unlink, including the hlp (*bp) of the last valid qh.
+ *
+ ************************************************************************************/
+
+static void kinetis_qh_unlink(struct kinetis_qh_s **qhunlink_p, uint32_t **bp)
+  {
+    uint32_t regval;
+    uint32_t hlp = (*qhunlink_p)->hw.hlp;
+    struct kinetis_qh_s *qh;
+
+    while (*qhunlink_p != NULL)
+      {
+        qh          = *qhunlink_p;
+        *qhunlink_p = qh->flink;
+
+        if (qh->hw.hlp != hlp)
+          {
+            qh->hw.hlp = hlp;
+            up_flush_dcache((uintptr_t)&(qh->hw.hlp),
+                (uintptr_t)&(qh->hw.hlp) + sizeof(uint32_t));
+          }
+
+        /* Add it to the waiting list */
+
+        kinetis_qh_aawait(qh);
+      }
+
+    **bp = hlp;
+    up_flush_dcache((uintptr_t)*bp, (uintptr_t)*bp + sizeof(uint32_t));
+
+    /* Then start async advance doorbell process */
+
+    regval = kinetis_getreg(&HCOR->usbcmd);
+    kinetis_putreg(regval | EHCI_USBCMD_IAADB, &HCOR->usbcmd);
+  }
+
+/************************************************************************************
  * Name: kinetis_qh_ioccheck
  *
  * Description:
@@ -2838,6 +2875,7 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
   struct kinetis_epinfo_s *epinfo;
   uint32_t token;
   int ret;
+  struct kinetis_qh_s **qhunlink_p = (struct kinetis_qh_s **)arg;
 
   DEBUGASSERT(qh && bp);
 
@@ -2894,13 +2932,6 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
 
   if ((kinetis_swap32(qh->fqp) & QTD_NQP_T) != 0)
     {
-      /* Set the forward link of the previous QH to point to the next
-       * QH in the list.
-       */
-
-      **bp = qh->hw.hlp;
-      up_flush_dcache((uintptr_t)*bp, (uintptr_t)*bp + sizeof(uint32_t));
-
       /* Check for errors, update the data toggle */
 
       if ((token & QH_TOKEN_ERRORS) == 0)
@@ -2969,16 +3000,21 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
           kinetis_asynch_completion(epinfo);
         }
 #endif
+      /* Add it to the intermediate unlink list */
 
-      /* Then start async advance doorbell process */
-
-      kinetis_qh_aawait(qh);
+      qh->flink  = *qhunlink_p;
+      *qhunlink_p = qh;
     }
   else
     {
       /* Otherwise, the horizontal link pointer of this QH will become the
        * next back pointer.
        */
+
+      if (*qhunlink_p)
+        {
+          kinetis_qh_unlink(qhunlink_p, bp);
+        }
 
       *bp = &qh->hw.hlp;
     }
@@ -3092,12 +3128,11 @@ static int kinetis_qh_cancel(struct kinetis_qh_s *qh, uint32_t **bp, void *arg)
       usbhost_trace1(EHCI_TRACE1_QTDFOREACH_FAILED, -ret);
     }
 
-  /* Then start async advance doorbell process */
+  /* Then release this QH by returning it to the free list.  Return 1
+   * to stop the traverse without an error.
+   */
 
-  kinetis_qh_aawait(qh);
-
-  /* Return 1 to stop the traverse without an error. */
-
+  kinetis_qh_free(qh);
   return 1;
 }
 #endif /* CONFIG_USBHOST_ASYNCH */
@@ -3151,11 +3186,18 @@ static inline void kinetis_ioc_bottomhalf(void)
       /* Then traverse and operate on every QH and qTD in the asynchronous
        * queue
        */
+      struct kinetis_qh_s *qhunlink = NULL; /* Intermediate unlink list */
 
-      ret = kinetis_qh_foreach(qh, &bp, kinetis_qh_ioccheck, NULL);
+      ret = kinetis_qh_foreach(qh, &bp, kinetis_qh_ioccheck,
+          (void *)&qhunlink);
       if (ret < 0)
         {
           usbhost_trace1(EHCI_TRACE1_QHFOREACH_FAILED, -ret);
+        }
+
+      if (qhunlink != NULL)
+        {
+          kinetis_qh_unlink(&qhunlink, &bp);
         }
     }
 

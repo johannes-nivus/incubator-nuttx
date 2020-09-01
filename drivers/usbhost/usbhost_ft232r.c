@@ -1101,6 +1101,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
 
   uartdev = &priv->uartdev;
   txbuf   = &uartdev->xmit;
+  txndx = 0;
 
   /* Loop until we become disconnected */
 
@@ -1120,8 +1121,6 @@ static int usbhost_txdata_task(int argc, char *argv[])
           /* Copy data from the UART TX buffer until either 1) the UART TX
            * buffer has been emptied, or 2) the Bulk OUT buffer is full.
            */
-
-          txndx = 0;
 
           while (txtail != txhead && txndx < priv->pktsize)
             {
@@ -1159,6 +1158,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
               waited   = false;
               nwritten = DRVR_TRANSFER(hport->drvr, priv->bulkout,
                                        priv->outbuf, txndx);
+              txndx    = 0;
 
               if (nwritten < 0)
                 {
