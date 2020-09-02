@@ -1352,9 +1352,6 @@ static int usbhost_rxdata_task(int argc, char *argv[])
 
               if (++rxndx >= nread)
                 {
-                  /* In that case set the number of bytes in the buffer to zero.
-                   * This will force re-reading on the next time through the loop.
-                   */
 
                   /* Inform any waiters that there is new incoming data available. */
                   uart_datareceived(uartdev);
