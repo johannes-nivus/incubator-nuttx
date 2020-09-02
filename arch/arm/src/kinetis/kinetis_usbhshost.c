@@ -302,11 +302,12 @@ struct kinetis_ehci_s
   sem_t exclsem;                /* Support mutually exclusive access */
   sem_t pscsem;                 /* Semaphore to wait for port status change events */
 
-  struct kinetis_epinfo_s ep0;    /* Endpoint 0 */
-  struct kinetis_qh_s *qhaawait;  /* List of waiting Queue Head (QH) structures */
-  struct kinetis_qh_s *qhfree;    /* List of free Queue Head (QH) structures */
-  struct kinetis_list_s *qtdfree; /* List of free Queue Element Transfer Descriptor (qTD) */
-  struct work_s work;             /* Supports interrupt bottom half */
+  struct kinetis_epinfo_s ep0;      /* Endpoint 0 */
+  struct kinetis_qh_s *qhaawait;    /* List of waiting Queue Head (QH) structures */
+  struct kinetis_qh_s *qhaapend;    /* List of waiting Queue Head (QH) structures */
+  struct kinetis_qh_s *qhfree;      /* List of free Queue Head (QH) structures */
+  struct kinetis_list_s *qtdfree;   /* List of free Queue Element Transfer Descriptor (qTD) */
+  struct work_s work;               /* Supports interrupt bottom half */
 
 #ifdef CONFIG_USBHOST_HUB
   /* Used to pass external hub port events */
@@ -2818,48 +2819,6 @@ static int kinetis_qtd_ioccheck(struct kinetis_qtd_s *qtd, uint32_t **bp,
 }
 
 /************************************************************************************
- * Name: kinetis_qh_unlink
- *
- * Description:
- *   This function unlinks the queue heads stored in the intermediate qhunlink_p
- *   list. All horizontal link pointers are set to next valid qh after the last qh
- *   to unlink, including the hlp (*bp) of the last valid qh.
- *
- ************************************************************************************/
-
-static void kinetis_qh_unlink(struct kinetis_qh_s **qhunlink_p, uint32_t **bp)
-  {
-    uint32_t regval;
-    uint32_t hlp = (*qhunlink_p)->hw.hlp;
-    struct kinetis_qh_s *qh;
-
-    while (*qhunlink_p != NULL)
-      {
-        qh          = *qhunlink_p;
-        *qhunlink_p = qh->flink;
-
-        if (qh->hw.hlp != hlp)
-          {
-            qh->hw.hlp = hlp;
-            up_flush_dcache((uintptr_t)&(qh->hw.hlp),
-                (uintptr_t)&(qh->hw.hlp) + sizeof(uint32_t));
-          }
-
-        /* Add it to the waiting list */
-
-        kinetis_qh_aawait(qh);
-      }
-
-    **bp = hlp;
-    up_flush_dcache((uintptr_t)*bp, (uintptr_t)*bp + sizeof(uint32_t));
-
-    /* Then start async advance doorbell process */
-
-    regval = kinetis_getreg(&HCOR->usbcmd);
-    kinetis_putreg(regval | EHCI_USBCMD_IAADB, &HCOR->usbcmd);
-  }
-
-/************************************************************************************
  * Name: kinetis_qh_ioccheck
  *
  * Description:
@@ -2875,7 +2834,6 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
   struct kinetis_epinfo_s *epinfo;
   uint32_t token;
   int ret;
-  struct kinetis_qh_s **qhunlink_p = (struct kinetis_qh_s **)arg;
 
   DEBUGASSERT(qh && bp);
 
@@ -2914,11 +2872,6 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
        * zero to visit the next QH in the list.
        */
 
-      if (*qhunlink_p)
-        {
-          kinetis_qh_unlink(qhunlink_p, bp);
-        }
-
       *bp = &qh->hw.hlp;
       return OK;
     }
@@ -2937,6 +2890,13 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
 
   if ((kinetis_swap32(qh->fqp) & QTD_NQP_T) != 0)
     {
+      /* Set the forward link of the previous QH to point to the next
+       * QH in the list.
+       */
+
+      **bp = qh->hw.hlp;
+      up_flush_dcache((uintptr_t)*bp, (uintptr_t)*bp + sizeof(uint32_t));
+
       /* Check for errors, update the data toggle */
 
       if ((token & QH_TOKEN_ERRORS) == 0)
@@ -3005,21 +2965,16 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
           kinetis_asynch_completion(epinfo);
         }
 #endif
-      /* Add it to the intermediate unlink list */
 
-      qh->flink  = *qhunlink_p;
-      *qhunlink_p = qh;
+      /* Then start async advance doorbell process */
+
+      kinetis_qh_aawait(qh);
     }
   else
     {
       /* Otherwise, the horizontal link pointer of this QH will become the
        * next back pointer.
        */
-
-      if (*qhunlink_p)
-        {
-          kinetis_qh_unlink(qhunlink_p, bp);
-        }
 
       *bp = &qh->hw.hlp;
     }
@@ -3191,18 +3146,11 @@ static inline void kinetis_ioc_bottomhalf(void)
       /* Then traverse and operate on every QH and qTD in the asynchronous
        * queue
        */
-      struct kinetis_qh_s *qhunlink = NULL; /* Intermediate unlink list */
 
-      ret = kinetis_qh_foreach(qh, &bp, kinetis_qh_ioccheck,
-          (void *)&qhunlink);
+      ret = kinetis_qh_foreach(qh, &bp, kinetis_qh_ioccheck, NULL);
       if (ret < 0)
         {
           usbhost_trace1(EHCI_TRACE1_QHFOREACH_FAILED, -ret);
-        }
-
-      if (qhunlink != NULL)
-        {
-          kinetis_qh_unlink(&qhunlink, &bp);
         }
     }
 
@@ -3410,10 +3358,10 @@ static inline void kinetis_async_advance_bottomhalf(void)
   struct kinetis_qh_s *qh;
   usbhost_vtrace1(EHCI_VTRACE1_AAINTR, 0);
 
-  while (g_ehci.qhaawait != NULL)
+  while (g_ehci.qhaapend != NULL)
     {
-      qh = g_ehci.qhaawait;
-      g_ehci.qhaawait = qh->flink;
+      qh = g_ehci.qhaapend;
+      g_ehci.qhaapend = qh->flink;
       kinetis_qh_free(qh);
     }
 }
@@ -3489,6 +3437,15 @@ static void kinetis_ehci_bottomhalf(FAR void *arg)
 
       kinetis_ioc_bottomhalf();
       kinetis_putreg(EHCI_INT_USBINT | EHCI_INT_USBERRINT, &HCOR->usbsts);
+    }
+
+
+  if (g_ehci.qhaapend == NULL && g_ehci.qhaawait != NULL)
+    {
+      uint32_t regval = kinetis_getreg(&HCOR->usbcmd);
+      kinetis_putreg(regval | EHCI_USBCMD_IAADB, &HCOR->usbcmd);
+      g_ehci.qhaapend = g_ehci.qhaawait;
+      g_ehci.qhaawait = NULL;
     }
 
   /* Port Change Detect
@@ -5228,6 +5185,11 @@ FAR struct usbhost_connection_s *kinetis_ehci_initialize(int controller)
       return NULL;
     }
 #  endif
+
+  /* Initialize the lists of waiting Queue Head (QH) structures */
+
+  g_ehci.qhaawait = NULL;
+  g_ehci.qhaapend = NULL;
 
   /* Initialize the list of free Queue Head (QH) structures */
 
