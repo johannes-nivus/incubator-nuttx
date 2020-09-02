@@ -1270,7 +1270,7 @@ static int usbhost_rxdata_task(int argc, char *argv[])
         {
           /* Do we have any buffer RX data to transfer? */
 
-          if (rxndx == nread)
+          if (rxndx >= nread)
             {
               /* No.. Read more data from the FTDI device */
 
@@ -1308,64 +1308,48 @@ static int usbhost_rxdata_task(int argc, char *argv[])
                * only FTDI status information.
                */
 
-              if (nread > 2)
-                {
-                  nread = nread - 2;
-                }
-              else
-                {
-                  nread = 0;
-                }
-
-              rxndx = 0;
+              rxndx = 2;
 
               flags = enter_critical_section();
             }
-          else if (rxndx < nread)
+          else
             {
-              /* We do else if because of recheck rxena, rts, and disconnected. */
-
-              /* Transfer one byte from the RX packet buffer into UART RX buffer.
-               * +2 to account for the two status byes
-               */
-
-              rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx + 2];
-
-              /* Save the updated indices */
-
-              rxbuf->head = nexthead;
-
-              /* Update the head point for for the next pass through the loop
-               * handling. If nexthead incremented to rxbuf->tail, then the
-               * RX buffer will and we will exit the loop at the top.
-               */
-
-              if (++nexthead >= rxbuf->size)
+              while (rxndx < nread && nexthead != rxbuf->tail)
                 {
-                   nexthead = 0;
+                  /* Transfer one byte from the RX packet buffer into
+                   * UART RX buffer. +2 to account for the two status bytes
+                   */
+
+                  rxbuf->buffer[rxbuf->head] = priv->inbuf[rxndx];
+
+                  /* Increment the index in the USB IN packet buffer. If the
+                   * index becomes equal to the number of bytes in the
+                   * buffer, then we have consumed all of the RX data.
+                   */
+
+                  rxndx++;
+
+                  /* Save the updated indices */
+
+                  rxbuf->head = nexthead;
+
+                  if (++nexthead >= rxbuf->size)
+                    {
+                       nexthead = 0;
+                    }
                 }
 
-              /* Increment the index in the USB IN packet buffer.  If the
-               * index becomes equal to the number of bytes in the buffer, then
-               * we have consumed all of the RX data.
+              /* Inform any waiters that there is new incoming data
+               * available.
                */
 
-              if (++rxndx >= nread)
-                {
-
-                  /* Inform any waiters that there is new incoming data available. */
-                  uart_datareceived(uartdev);
-                }
+              uart_datareceived(uartdev);
             }
         }
       else
         {
-          if (priv->rxena && rxndx < nread)
-            {
-              uart_datareceived(uartdev);
-            }
-
           /* We sleep a little */
+
           nxsig_usleep(CONFIG_USBHOST_FT232R_RXDELAY * 1000);
         }
     }
