@@ -2914,6 +2914,11 @@ static int kinetis_qh_ioccheck(struct kinetis_qh_s *qh, uint32_t **bp, void *arg
        * zero to visit the next QH in the list.
        */
 
+      if (*qhunlink_p)
+        {
+          kinetis_qh_unlink(qhunlink_p, bp);
+        }
+
       *bp = &qh->hw.hlp;
       return OK;
     }
