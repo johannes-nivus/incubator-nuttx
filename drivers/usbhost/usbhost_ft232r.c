@@ -242,7 +242,8 @@ struct usbhost_ft232r_s
   uint8_t        dataif;         /* Data interface number */
   uint8_t        nbits;          /* Number of bits (for line encoding) */
   uint8_t        parity;         /* Parity (for line encoding) */
-  uint16_t       pktsize;        /* Allocated size of transfer buffers */
+  uint16_t       rxpktsize;      /* Allocated size of rx buffer */
+  uint16_t       txpktsize;      /* Allocated size of tx buffer */
   int16_t        crefs;          /* Reference count on the driver instance */
   int16_t        nbytes;         /* The number of bytes actually transferred */
   sem_t          exclsem;        /* Used to maintain mutual exclusive access */
@@ -1122,7 +1123,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
            * buffer has been emptied, or 2) the Bulk OUT buffer is full.
            */
 
-          while (txtail != txhead && txndx < priv->pktsize)
+          while (txtail != txhead && txndx < priv->txpktsize)
             {
               /* Copy the next byte */
 
@@ -1149,7 +1150,7 @@ static int usbhost_txdata_task(int argc, char *argv[])
 
           leave_critical_section(flags);
 
-          if (txndx >= priv->pktsize ||
+          if (txndx >= priv->txpktsize ||
               txndx >= CONFIG_USBHOST_FT232R_TX_THRESHOLD ||
               waited)
             {
@@ -1277,7 +1278,7 @@ static int usbhost_rxdata_task(int argc, char *argv[])
               leave_critical_section(flags);
 
               nread = DRVR_TRANSFER(hport->drvr, priv->bulkin,
-                                    priv->inbuf, priv->pktsize);
+                                    priv->inbuf, priv->rxpktsize);
 
               if (nread < 0)
                 {
@@ -1835,13 +1836,13 @@ static int usbhost_alloc_buffers(FAR struct usbhost_ft232r_s *priv)
 
   DEBUGASSERT(maxlen >= sizeof(struct usb_ctrlreq_s));
 
-  /* Set the size of Bulk IN and OUT buffers to the max packet size */
+  /* Allocate a RX buffer for Bulk IN transfers
+   * Set the size of RX buffer to RXBUFSIZE but multiple of 64
+   */
 
-  priv->pktsize = (hport->speed == USB_SPEED_HIGH) ? 512 : 64;
+  priv->rxpktsize = (CONFIG_USBHOST_FT232R_RXBUFSIZE + 63) & ~63;
 
-  /* Allocate a RX buffer for Bulk IN transfers */
-
-  ret = DRVR_IOALLOC(hport->drvr, &priv->inbuf, priv->pktsize);
+  ret = DRVR_IOALLOC(hport->drvr, &priv->inbuf, priv->rxpktsize);
   if (ret < 0)
     {
       uerr("ERROR: DRVR_IOALLOC of Bulk IN buffer failed: %d (%d bytes)\n",
@@ -1849,9 +1850,13 @@ static int usbhost_alloc_buffers(FAR struct usbhost_ft232r_s *priv)
       goto errout;
     }
 
-  /* Allocate a TX buffer for Bulk IN transfers */
+  /* Allocate a TX buffer for Bulk OUT transfers
+   * Set the size of TX buffer to TXBUFSIZE but multiple of 64
+   */
 
-  ret = DRVR_IOALLOC(hport->drvr, &priv->outbuf, priv->pktsize);
+  priv->txpktsize = (CONFIG_USBHOST_FT232R_TXBUFSIZE + 63) & ~63;
+
+  ret = DRVR_IOALLOC(hport->drvr, &priv->outbuf, priv->txpktsize);
   if (ret < 0)
     {
       uerr("ERROR: DRVR_IOALLOC of Bulk OUT buffer failed: %d (%d bytes)\n",
@@ -1902,7 +1907,8 @@ static void usbhost_free_buffers(FAR struct usbhost_ft232r_s *priv)
       DRVR_IOFREE(hport->drvr, priv->outbuf);
     }
 
-  priv->pktsize      = 0;
+  priv->txpktsize    = 0;
+  priv->rxpktsize    = 0;
   priv->ctrlreq      = NULL;
   priv->inbuf        = NULL;
   priv->outbuf       = NULL;
@@ -2775,7 +2781,7 @@ static void usbhost_txint(FAR struct uart_dev_s *uartdev, bool enable)
               available += txbuf->size;
             }
 
-          if((available >= priv->pktsize ||
+          if((available >= priv->txpktsize ||
               available >= CONFIG_USBHOST_FT232R_TX_THRESHOLD))
             {
               /* The tx task is still alive. Signal the tx task. */
