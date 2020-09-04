@@ -41,6 +41,37 @@
 #  include <net/if.h>
 #endif
 
+#ifdef CONFIG_RTC
+#  include <nuttx/timers/rtc.h>
+#  include "kinetis_alarm.h"
+
+/*****************************************************************************
+ * Private Function Prototypes
+ *****************************************************************************/
+
+static int k28_rtc_initialize(void);
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
+
+/*****************************************************************************
+ * Name: k28_rtc_initialize
+ *
+ * Description:
+ *   Initialize rRTC
+ *
+ *****************************************************************************/
+
+static int k28_rtc_initialize(void)
+  {
+    struct rtc_lowerhalf_s *lower;
+
+    lower = kinetis_rtc_lowerhalf();
+    return rtc_initialize(0, lower);
+  }
+#endif
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -149,6 +180,10 @@ int k28_bringup(void)
   /* Initialize the auto-mounter */
 
   k28_automount_initialize();
+#endif
+
+#ifdef CONFIG_RTC
+  k28_rtc_initialize();
 #endif
 
   UNUSED(ret);
