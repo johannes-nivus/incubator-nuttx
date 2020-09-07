@@ -69,6 +69,8 @@
 #define BOARD_EXTAL_FREQ     12000000       /* 12MHz Oscillator */
 #define BOARD_XTAL32_FREQ    32768          /* 32KHz RTC Oscillator */
 
+#define BOARD_RTC_CAP        (RTC_CR_SC8P | RTC_CR_SC4P)
+
 /* PLL Configuration.
  * Either the external clock or crystal frequency is used to select the
  * PRDIV value. Only reference clock frequencies are supported that will
