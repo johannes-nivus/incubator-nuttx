@@ -143,6 +143,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* One CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 /* MK20DX---VLH7
  *
@@ -214,6 +215,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  undef  KINETIS_NCRC                         /* No CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 /* MK28FN2M0---15-
  *
@@ -276,6 +278,7 @@
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  define KINETIS_NQSPI           1            /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40X64VFX50) || defined(CONFIG_ARCH_CHIP_MK40X64VLH50) || \
     defined(CONFIG_ARCH_CHIP_MK40X64VLK50) || defined(CONFIG_ARCH_CHIP_MK40X64VMB50)
@@ -327,6 +330,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40X128VFX50) || defined(CONFIG_ARCH_CHIP_MK40X128VLH50) || \
     defined(CONFIG_ARCH_CHIP_MK40X128VLK50) || defined(CONFIG_ARCH_CHIP_MK40X128VMB50) || \
@@ -378,6 +382,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40X256VLK72) || defined(CONFIG_ARCH_CHIP_MK40X256VMB72) || \
     defined(CONFIG_ARCH_CHIP_MK40X256VLL72) || defined(CONFIG_ARCH_CHIP_MK40X256VML72)
@@ -425,6 +430,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40X128VLQ100) || defined(CONFIG_ARCH_CHIP_MK40X128VMD100)
 
@@ -472,6 +478,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40X256VLQ100) || defined(CONFIG_ARCH_CHIP_MK40X256VMD100)
 
@@ -519,6 +526,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK40N512VLK100) || defined(CONFIG_ARCH_CHIP_MK40N512VMB100) || \
       defined(CONFIG_ARCH_CHIP_MK40N512VLL100) || defined(CONFIG_ARCH_CHIP_MK40N512VML100) || \
@@ -568,6 +576,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N256VLL100)
 
@@ -618,6 +627,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60X256VLL100)
 
@@ -668,6 +678,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N512VLL100)
 
@@ -719,6 +730,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N256VML100)
 
@@ -769,6 +781,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60X256VML100)
 
@@ -819,6 +832,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N512VML100)
 
@@ -869,6 +883,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N256VLQ100)
 
@@ -919,6 +934,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60X256VLQ100)
 
@@ -969,6 +985,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N512VLQ100)
 
@@ -1019,6 +1036,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N256VMD100)
 
@@ -1069,6 +1087,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60X256VMD100)
 
@@ -1119,6 +1138,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60N512VMD100)
 
@@ -1169,6 +1189,7 @@
 #  undef  KINETIS_NMMCAU                       /* No hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK60FN1M0VLQ12)
 
@@ -1215,6 +1236,7 @@
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  undef  KINETIS_NTAMPER                      /* No tamper detect */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FN1M0VLL12)
 
@@ -1254,6 +1276,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FX512VLL12)
 
@@ -1293,6 +1316,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FX512VDC12)
 
@@ -1332,6 +1356,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FN1M0VDC12)
 
@@ -1371,6 +1396,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FX512VLQ12)
 
@@ -1410,6 +1436,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FN1M0VLQ12)
 
@@ -1449,6 +1476,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FX512VMD12)
 
@@ -1488,6 +1516,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 #elif defined(CONFIG_ARCH_CHIP_MK64FN1M0VMD12)
 
@@ -1527,6 +1556,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 
 /* MK66F N/X 1M0/2M0 V MD/LQ 18
  *
@@ -1593,6 +1623,7 @@
 #  define KINETIS_NRNG            1            /* Random number generator */
 #  define KINETIS_NMMCAU          1            /* Hardware encryption */
 #  define KINETIS_NCRC            1            /* CRC */
+#  undef  KINETIS_NQSPI                        /* QSPI */
 #else
 #  error "Unsupported Kinetis chip"
 #endif
