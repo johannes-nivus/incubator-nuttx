@@ -831,4 +831,27 @@
 #define QSPI_LUT_INSTR1_MASK  (0x3f << QSPI_LUT_INSTR1_SHIFT)
 #  define QSPI_LUT_INSTR1(n)  ((n << QSPI_LUT_INSTR1_SHIFT) & QSPI_LUT_INSTR1_MASK)
 
+/* LUT Instruction Set */
+
+#define QSPI_INSTR_STOP       0x00
+#define QSPI_INSTR_CMD        0x01
+#define QSPI_INSTR_ADDR       0x02
+#define QSPI_INSTR_DUMMY      0x03
+#define QSPI_INSTR_MODE       0x04
+#define QSPI_INSTR_MODE2      0x05
+#define QSPI_INSTR_MODE4      0x06
+#define QSPI_INSTR_READ       0x07
+#define QSPI_INSTR_WRITE      0x08
+#define QSPI_INSTR_JMP_ON_CS  0x09
+#define QSPI_INSTR_ADDR_DDR   0x0a
+#define QSPI_INSTR_MODE_DDR   0x0b
+#define QSPI_INSTR_MODE2_DDR  0x0c
+#define QSPI_INSTR_MODE4_DDR  0x0d
+#define QSPI_INSTR_READ_DDR   0x0e
+#define QSPI_INSTR_WRITE_DDR  0x0f
+#define QSPI_INSTR_DATA_LEARN 0x10
+#define QSPI_INSTR_CMD_DDR    0x11
+#define QSPI_INSTR_CADDR      0x12
+#define QSPI_INSTR_CADDR_DDR  0x13
+
 #endif /* __ARCH_ARM_SRC_KINETIS_HARDWARE_KINETIS_QSPI_H */
