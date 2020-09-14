@@ -274,28 +274,30 @@
 
 #define QSPI_MCR_SWRSTSD    (1 << 0)  /* Bit 0:  Software reset for serial flash domain */
 #define QSPI_MCR_SWRSTHD    (1 << 1)  /* Bit 1:  Software reset for AHB domain */
-
 #define QSPI_MCR_END_CFG_SHIFT (2)    /* Bits 2-3: Defines the endianness of the QuadSPI module. 
                                        * For more details refer to Byte Ordering Endianess+
                                        */
 #define QSPI_MCR_END_CFG_MASK  (0x3 << QSPI_MCR_END_CFG_SHIFT)
 #  define QSPI_MCR_END_CFG(n)  ((n << QSPI_MCR_END_CFG_SHIFT) & QSPI_MCR_END_CFG_MASK)
-
+                                      /* Bit 4:  Reserved */
 #define QSPI_MCR_DQS_LAT_EN (1 << 5)  /* Bit 5:  DQS Latency Enable */
 #define QSPI_MCR_DQS_EN     (1 << 6)  /* Bit 6:  DQS enable */
 #define QSPI_MCR_DDR_EN     (1 << 7)  /* Bit 7:  DDR mode enable */
+                                      /* Bits 8-9: Reserved */
 #define QSPI_MCR_CLR_RXF    (1 << 10) /* Bit 10: Clear RX FIFO. Invalidates the RX Buffer.
                                        * This is a self-clearing field.
                                        */
 #define QSPI_MCR_CLR_TXF    (1 << 11) /* Bit 11: Clear TX FIFO/Buffer. Invalidates the TX Buffer.
                                        * This is a self-clearing field.
                                        */
+                                      /* Bits 12-13: Reserved */
 #define QSPI_MCR_MDIS       (1 << 14) /* Bit 14: Module Disable */
+                                      /* Bit 15: Reserved */
 #define QSPI_MCR_ISD2FA     (1 << 16) /* Bit 16: Idle Signal Drive IOFA[2] Flash A */
 #define QSPI_MCR_ISD3FA     (1 << 17) /* Bit 17: Idle Signal Drive IOFA[3] Flash A */
 #define QSPI_MCR_ISD2FB     (1 << 18) /* Bit 18: Idle Signal Drive IOFB[2] Flash B */
 #define QSPI_MCR_ISD3FB     (1 << 19) /* Bit 19: Idle Signal Drive IOFB[3] Flash B */
-
+                                      /* Bits 20-23: Reserved */
 #define QSPI_MCR_SCLKCFG_SHIFT (24)   /* Bits 24-31: Serial Clock Configuration */
 #define QSPI_MCR_SCLKCFG_MASK  (0xff << QSPI_MCR_SCLKCFG_SHIFT)
 #  define QSPI_MCR_SCLKCFG(n)  ((n << QSPI_MCR_SCLKCFG_SHIFT) & QSPI_MCR_SCLKCFG_MASK)
@@ -311,21 +313,22 @@
 #define QSPI_IPCR_PAR_EN (1 << 16) /* Bit 16: When set, a transaction to two serial flash devices
                                     * is triggered in parallel mode
                                     */
-
+                                   /* Bits 17-23: Reserved */
 #define QSPI_IPCR_SEQID_SHIFT (24) /* Bits 24-27: Points to a sequence in the Look-up table */
 #define QSPI_IPCR_SEQID_MASK  (0xf << QSPI_IPCR_SEQID_SHIFT)
 #  define QSPI_IPCR_SEQID(n)  ((n << QSPI_IPCR_SEQID_SHIFT) & QSPI_IPCR_SEQID_MASK)
+                                   /* Bits 28-31: Reserved */
 
 /* QSPI Flash Configuration Register */
 
 #define QSPI_FLSHCR_TCSS_SHIFT (0) /* Bits 0-3: Flash CS setup time in terms of clock cycles */
 #define QSPI_FLSHCR_TCSS_MASK  (0xf << QSPI_FLSHCR_TCSS_SHIFT)
 #  define QSPI_FLSHCR_TCSS(n)  ((n << QSPI_FLSHCR_TCSS_SHIFT) & QSPI_FLSHCR_TCSS_MASK)
-
+                                   /* Bits 4-7: Reserved */
 #define QSPI_FLSHCR_TCSH_SHIFT (8) /* Bits 8-11: Flash CS hold time in terms of clock cycles */
 #define QSPI_FLSHCR_TCSH_MASK  (0xf << QSPI_FLSHCR_TCSH_SHIFT)
 #  define QSPI_FLSHCR_TCSH(n)  ((n << QSPI_FLSHCR_TCSH_SHIFT) & QSPI_FLSHCR_TCSH_MASK)
-
+                                   /* Bits 12-15: Reserved */
 #define QSPI_FLSHCR_TDH_SHIFT (16) /* Bits 16-17: Serial flash data in hold time */
 #define QSPI_FLSHCR_TDH_MASK  (0x3 << QSPI_FLSHCR_TDH_SHIFT)
 #  define QSPI_FLSHCR_TDH(n)  ((n << QSPI_FLSHCR_TDH_SHIFT) & QSPI_FLSHCR_TDH_MASK)
@@ -339,16 +342,18 @@
                                                              * half clock
                                                              */
 
+                                   /* Bits 18-31: Reserved */
+
 /* QSPI Buffer0 Configuration Register */
 
 #define QSPI_BUF0CR_MSTRID_SHIFT (0) /* Bits 0-3: Master ID */
 #define QSPI_BUF0CR_MSTRID_MASK  (0xf << QSPI_BUF0CR_MSTRID_SHIFT)
 #  define QSPI_BUF0CR_MSTRID(n)  ((n << QSPI_BUF0CR_MSTRID_SHIFT) & QSPI_BUF0CR_MSTRID_MASK)
-
+                                     /* Bits 4-7: Reserved */
 #define QSPI_BUF0CR_ADATSZ_SHIFT (8) /* Bits 8-14: AHB data transfer size */
 #define QSPI_BUF0CR_ADATSZ_MASK  (0x7f << QSPI_BUF0CR_ADATSZ_SHIFT)
 #  define QSPI_BUF0CR_ADATSZ(n)  ((n << QSPI_BUF0CR_ADATSZ_SHIFT) & QSPI_BUF0CR_ADATSZ_MASK)
-
+                                     /* Bits 15-30: Reserved */
 #define QSPI_BUF0CR_HP_EN  (1 << 31) /* Bit 31: High Priority Enable */
 
 /* QSPI Buffer1 Configuration Register */
@@ -356,42 +361,45 @@
 #define QSPI_BUF1CR_MSTRID_SHIFT (0) /* Bits 0-3: Master ID */
 #define QSPI_BUF1CR_MSTRID_MASK  (0xf << QSPI_BUF1CR_MSTRID_SHIFT)
 #  define QSPI_BUF1CR_MSTRID(n)  ((n << QSPI_BUF1CR_MSTRID_SHIFT) & QSPI_BUF1CR_MSTRID_MASK)
-
+                                     /* Bits 4-7: Reserved */
 #define QSPI_BUF1CR_ADATSZ_SHIFT (8) /* Bits 8-14: AHB data transfer size */
 #define QSPI_BUF1CR_ADATSZ_MASK  (0x7f << QSPI_BUF1CR_ADATSZ_SHIFT)
 #  define QSPI_BUF1CR_ADATSZ(n)  ((n << QSPI_BUF1CR_ADATSZ_SHIFT) & QSPI_BUF1CR_ADATSZ_MASK)
+                                     /* Bits 15-31: Reserved */
 
 /* QSPI Buffer2 Configuration Register */
 
 #define QSPI_BUF2CR_MSTRID_SHIFT (0) /* Bits 0-3: Master ID */
 #define QSPI_BUF2CR_MSTRID_MASK  (0xf << QSPI_BUF2CR_MSTRID_SHIFT)
 #  define QSPI_BUF2CR_MSTRID(n)  ((n << QSPI_BUF2CR_MSTRID_SHIFT) & QSPI_BUF2CR_MSTRID_MASK)
-
+                                     /* Bits 4-7: Reserved */
 #define QSPI_BUF2CR_ADATSZ_SHIFT (8) /* Bits 8-14: AHB data transfer size */
 #define QSPI_BUF2CR_ADATSZ_MASK  (0x7f << QSPI_BUF2CR_ADATSZ_SHIFT)
 #  define QSPI_BUF2CR_ADATSZ(n)  ((n << QSPI_BUF2CR_ADATSZ_SHIFT) & QSPI_BUF2CR_ADATSZ_MASK)
+                                     /* Bits 15-31: Reserved */
 
 /* QSPI Buffer3 Configuration Register */
 
 #define QSPI_BUF3CR_MSTRID_SHIFT (0) /* Bits 0-3: Master ID */
 #define QSPI_BUF3CR_MSTRID_MASK  (0xf << QSPI_BUF3CR_MSTRID_SHIFT)
 #  define QSPI_BUF3CR_MSTRID(n)  ((n << QSPI_BUF3CR_MSTRID_SHIFT) & QSPI_BUF3CR_MSTRID_MASK)
-
+                                     /* Bits 4-7: Reserved */
 #define QSPI_BUF3CR_ADATSZ_SHIFT (8) /* Bits 8-14: AHB data transfer size */
 #define QSPI_BUF3CR_ADATSZ_MASK  (0x7f << QSPI_BUF3CR_ADATSZ_SHIFT)
 #  define QSPI_BUF3CR_ADATSZ(n)  ((n << QSPI_BUF3CR_ADATSZ_SHIFT) & QSPI_BUF3CR_ADATSZ_MASK)
-
+                                     /* Bits 15-30: Reserved */
 #define QSPI_BUF3CR_ALLMST (1 << 31) /* Bit 31: All master enable */
 
 /* QSPI Buffer Generic Configuration Register */
 
+/* Bits 0-11: Reserved */
 #define QSPI_BFGENCR_SEQID_SHIFT (12) /* Bits 12-15: Points to a sequence in the Look-up-table */
 #define QSPI_BFGENCR_SEQID_MASK  (0xf << QSPI_BFGENCR_SEQID_SHIFT)
 #  define QSPI_BFGENCR_SEQID(n)  ((n << QSPI_BFGENCR_SEQID_SHIFT) & QSPI_BFGENCR_SEQID_MASK)
-
 #define QSPI_BFGENCR_PAR_EN (1 << 16) /* Bit 16: When set, a transaction to two serial flash
                                        * devices is triggered in parallel mode
                                        */
+                                      /* Bits 17-31: Reserved */
 
 /* QSPI SOC Configuration Register */
 
@@ -406,6 +414,7 @@
 #  define QSPI_SOCCR_QSPISRC_5   (5  << QSPI_SOCCR_QSPISRC_SHIFT) /* OSCERCLK clock */
 #  define QSPI_SOCCR_QSPISRC_6   (6  << QSPI_SOCCR_QSPISRC_SHIFT) /* MCGIRCLK clock */
 
+                                        /* Bits 3-7: Reserved */
 #define QSPI_SOCCR_DQSLPEN    (1 << 8)  /* Bit 8:  When this bit is set the internal generated DQS is
                                          * selected and looped back to QuadSPI, without going to DQS
                                          * pad. DQSPADLPEN should be cleared when this bit is set.
@@ -414,7 +423,6 @@
                                          * will be sent to the DQS pad first and then looped back to
                                          * QuadSPI. DQSLPEN should be cleared when this bit is set.
                                          */
-
 #define QSPI_SOCCR_DQSPHASEL_SHIFT (10) /* Bits 10-11: Phase shift for internal DQS generation.
                                          * These bits are always zero in SDR mode.
                                          */
@@ -498,6 +506,7 @@
 #  define QSPI_SOCCR_DLYTAPSELA_62  (62 << QSPI_SOCCR_DLYTAPSELA_SHIFT) /* 63 delay chain tap */
 #  define QSPI_SOCCR_DLYTAPSELA_63  (63 << QSPI_SOCCR_DLYTAPSELA_SHIFT) /* 64 delay chain tap */
 
+/* Bits 22-23: Reserved */
 #define QSPI_SOCCR_DLYTAPSELB_SHIFT (24) /* Bits 24-29: Delay chain tap number for QSPI Port B DQS */
 #define QSPI_SOCCR_DLYTAPSELB_MASK  (0x3f << QSPI_SOCCR_DLYTAPSELB_SHIFT)
 #  define QSPI_SOCCR_DLYTAPSELB(n)  ((n << QSPI_SOCCR_DLYTAPSELB_SHIFT) & QSPI_SOCCR_DLYTAPSELB_MASK)
@@ -566,20 +575,25 @@
 #  define QSPI_SOCCR_DLYTAPSELB_62  (62 << QSPI_SOCCR_DLYTAPSELB_SHIFT) /* 63 delay chain tap */
 #  define QSPI_SOCCR_DLYTAPSELB_63  (63 << QSPI_SOCCR_DLYTAPSELB_SHIFT) /* 64 delay chain tap */
 
+                                         /* Bits 30-31: Reserved */
+
 /* QSPI Buffer0 Top Index Register */
 
+                                       /* Bits 0-2: Reserved */
 #define QSPI_BUF0IND_TPINDX0_SHIFT (3) /* Bits 3-31: Top index of buffer 0. */
 #define QSPI_BUF0IND_TPINDX0_MASK  (0x1fffffff << QSPI_BUF0IND_TPINDX0_SHIFT)
 #  define QSPI_BUF0IND_TPINDX0(n)  ((n << QSPI_BUF0IND_TPINDX0_SHIFT) & QSPI_BUF0IND_TPINDX0_MASK)
 
 /* QSPI Buffer1 Top Index Register */
 
+                                       /* Bits 0-2: Reserved */
 #define QSPI_BUF1IND_TPINDX1_SHIFT (3) /* Bits 3-31: Top index of buffer 1. */
 #define QSPI_BUF1IND_TPINDX1_MASK  (0x1fffffff << QSPI_BUF1IND_TPINDX1_SHIFT)
 #  define QSPI_BUF1IND_TPINDX1(n)  ((n << QSPI_BUF1IND_TPINDX1_SHIFT) & QSPI_BUF1IND_TPINDX1_MASK)
 
 /* QSPI Buffer2 Top Index Register */
 
+                                       /* Bits 0-2: Reserved */
 #define QSPI_BUF2IND_TPINDX2_SHIFT (3) /* Bits 3-31: Top index of buffer 2. */
 #define QSPI_BUF2IND_TPINDX2_MASK  (0x1fffffff << QSPI_BUF2IND_TPINDX2_SHIFT)
 #  define QSPI_BUF2IND_TPINDX2(n)  ((n << QSPI_BUF2IND_TPINDX2_SHIFT) & QSPI_BUF2IND_TPINDX2_MASK)
@@ -589,47 +603,54 @@
 #define QSPI_SFACR_CAS_SHIFT (0) /* Bits 0-3: Column Address Space */
 #define QSPI_SFACR_CAS_MASK  (0xf << QSPI_SFACR_CAS_SHIFT)
 #  define QSPI_SFACR_CAS(n)  ((n << QSPI_SFACR_CAS_SHIFT) & QSPI_SFACR_CAS_MASK)
-
+                                 /* Bits 4-15: Reserved */
 #define QSPI_SFACR_WA  (1 << 16) /* Bit 16: Word Addressable */
+                                 /* Bits 17-31: Reserved */
 
 /* QSPI Sampling Register */
 
 #define QSPI_SMPR_HSENA  (1 << 0)   /* Bit 0:  Half Speed serial flash clock Enable */
 #define QSPI_SMPR_HSPHS  (1 << 1)   /* Bit 1:  Half Speed Phase selection for SDR instructions. */
 #define QSPI_SMPR_HSDLY  (1 << 2)   /* Bit 2:  Half Speed Delay selection for SDR instructions. */
+                                    /* Bits 3-4: Reserved */
 #define QSPI_SMPR_FSPHS  (1 << 5)   /* Bit 5:  Full Speed Phase selection for SDR instructions. */
 #define QSPI_SMPR_FSDLY  (1 << 6)   /* Bit 6:  Full Speed Delay selection for SDR instructions.
                                      * Select the delay with respect to the reference edge for the
                                      * sample point valid for full speed commands.
                                      */
-
+                                    /* Bits 7-15: Reserved */
 #define QSPI_SMPR_DDRSMP_SHIFT (16) /* Bits 16-18: DDR Sampling point */
 #define QSPI_SMPR_DDRSMP_MASK  (0x7 << QSPI_SMPR_DDRSMP_SHIFT)
 #  define QSPI_SMPR_DDRSMP(n)  ((n << QSPI_SMPR_DDRSMP_SHIFT) & QSPI_SMPR_DDRSMP_MASK)
+                                    /* Bits 19-31: Reserved */
 
 /* QSPI RX Buffer Status Register */
 
+                                   /* Bits 0-7: Reserved */
 #define QSPI_RBSR_RDBFL_SHIFT (8)  /* Bits 8-12: RX Buffer Fill Level */
 #define QSPI_RBSR_RDBFL_MASK  (0x1f << QSPI_RBSR_RDBFL_SHIFT)
-
+                                   /* Bits 13-15: Reserved */
 #define QSPI_RBSR_RDCTR_SHIFT (16) /* Bits 16-31: Read Counter */
 #define QSPI_RBSR_RDCTR_MASK  (0xffff << QSPI_RBSR_RDCTR_SHIFT)
+                                   /* Bits 17-31: Reserved */
 
 /* QSPI RX Buffer Control Register */
 
 #define QSPI_RBCT_WMRK_SHIFT (0)  /* Bits 0-3: RX Buffer Watermark */
 #define QSPI_RBCT_WMRK_MASK  (0xf << QSPI_RBCT_WMRK_SHIFT)
 #  define QSPI_RBCT_WMRK(n)  ((n << QSPI_RBCT_WMRK_SHIFT) & QSPI_RBCT_WMRK_MASK)
-
+                                  /* Bits 4-7: Reserved */
 #define QSPI_RBCT_RXBRD (1 << 8)  /* Bit 8:  RX Buffer Readout. This field specifies the access
                                    * scheme for the RX Buffer readout.
                                    */
+                                  /* Bits 9-31: Reserved */
 
 /* QSPI TX Buffer Status Register */
 
-#define QSPI_TBSR_TRBFL_SHIFT (8) /* Bits 8-12: TX Buffer Fill Level */
+                                   /* Bits 0-7: Reserved */
+#define QSPI_TBSR_TRBFL_SHIFT (8)  /* Bits 8-12: TX Buffer Fill Level */
 #define QSPI_TBSR_TRBFL_MASK  (0x1f << QSPI_TBSR_TRBFL_SHIFT)
-
+                                   /* Bits 13-15: Reserved */
 #define QSPI_TBSR_TRCTR_SHIFT (16) /* Bits 16-31: Transmit Counter */
 #define QSPI_TBSR_TRCTR_MASK  (0xffff << QSPI_TBSR_TRCTR_SHIFT)
 
@@ -638,6 +659,7 @@
 #define QSPI_TBCT_WMRK_SHIFT (0) /* Bits 0-3: Determines the watermark for the TX Buffer */
 #define QSPI_TBCT_WMRK_MASK  (0xf << QSPI_TBCT_WMRK_SHIFT)
 #  define QSPI_TBCT_WMRK(n)  ((n << QSPI_TBCT_WMRK_SHIFT) & QSPI_TBCT_WMRK_MASK)
+                                  /* Bits 4-31: Reserved */
 
 /* QSPI Status Register */
 
@@ -648,6 +670,7 @@
 #define QSPI_SR_AHB_ACC (1 << 2)  /* Bit 2:  AHB Access. Asserted when the transaction currently
                                    * executed was initiated by AHB bus.
                                    */
+                                  /* Bits 3-4: Reserved */
 #define QSPI_SR_AHBGNT  (1 << 5)  /* Bit 5:  AHB Command priority Granted: Asserted when another
                                    * module has been granted priority of AHB Commands against
                                    * IP Commands.
@@ -661,8 +684,11 @@
 #define QSPI_SR_AHB1FUL (1 << 12) /* Bit 12: AHB 1 Buffer Full */
 #define QSPI_SR_AHB2FUL (1 << 13) /* Bit 13: AHB 2 Buffer Full */
 #define QSPI_SR_AHB3FUL (1 << 14) /* Bit 14: AHB 3 Buffer Full */
+                                  /* Bit 15: Reserved */
 #define QSPI_SR_RXWE    (1 << 16) /* Bit 16: RX Buffer Watermark Exceeded */
+                                  /* Bits 17-18: Reserved */
 #define QSPI_SR_RXFULL  (1 << 19) /* Bit 19: RX Buffer Full */
+                                  /* Bits 20-22: Reserved */
 #define QSPI_SR_RXDMA   (1 << 23) /* Bit 23: RX Buffer DMA. Asserted when RX Buffer read out via DMA
                                    * is active i.e DMA is requested or running.
                                    */
@@ -672,16 +698,19 @@
 #define QSPI_SR_TXFULL  (1 << 27) /* Bit 27: TX Buffer Full.
                                    * Asserted when no more data can be stored.
                                    */
-
+                                  /* Bit 28: Reserved */
 #define QSPI_SR_DLPSMP_SHIFT (29) /* Bits 29-31: Data learning pattern sampling point */
 #define QSPI_SR_DLPSMP_MASK  (0x7 << QSPI_SR_DLPSMP_SHIFT)
 
 /* QSPI Flag Register */
 
 #define QSPI_FR_TFF    (1 << 0)  /* Bit 0:  IP Command Transaction Finished Flag */
+                                 /* Bits 1-3: Reserved */
 #define QSPI_FR_IPGEF  (1 << 4)  /* Bit 4:  IP Command Trigger during AHB Grant Error Flag */
+                                 /* Bit 5: Reserved */
 #define QSPI_FR_IPIEF  (1 << 6)  /* Bit 6:  IP Command Trigger could not be executed Error Flag */
 #define QSPI_FR_IPAEF  (1 << 7)  /* Bit 7:  IP Command Trigger during AHB Access Error Flag */
+                                 /* Bits 8-10: Reserved */
 #define QSPI_FR_IUEF   (1 << 11) /* Bit 11: IP Command Usage Error Flag */
 #define QSPI_FR_ABOF   (1 << 12) /* Bit 12: AHB Buffer Overflow Flag */
 #define QSPI_FR_AIBSEF (1 << 13) /* Bit 13: AHB Illegal Burst Size Error Flag */
@@ -689,23 +718,29 @@
 #define QSPI_FR_ABSEF  (1 << 15) /* Bit 15: AHB Sequence Error Flag */
 #define QSPI_FR_RBDF   (1 << 16) /* Bit 16: RX Buffer Drain Flag */
 #define QSPI_FR_RBOF   (1 << 17) /* Bit 17: RX Buffer Overflow Flag */
+                                 /* Bits 18-22: Reserved */
 #define QSPI_FR_ILLINE (1 << 23) /* Bit 23: Illegal Instruction Error Flag */
+                                 /* Bits 24-25: Reserved */
 #define QSPI_FR_TBUF   (1 << 26) /* Bit 26: TX Buffer Underrun Flag */
 #define QSPI_FR_TBFF   (1 << 27) /* Bit 27: TX Buffer Fill Flag */
+                                 /* Bits 28-30: Reserved */
 #define QSPI_FR_DLPFF  (1 << 31) /* Bit 31: Data Learning Pattern Failure Flag */
 
 /* QSPI Interrupt and DMA Request Select and Enable Register */
 
 #define QSPI_RSER_TFIE    (1 << 0)  /* Bit 0:  Transaction Finished Interrupt Enable */
+                                    /* Bits 1-3: Reserved */
 #define QSPI_RSER_IPGEIE  (1 << 4)  /* Bit 4:  IP Command Trigger during AHB Grant
                                      * Error Interrupt Enable
                                      */
+                                    /* Bit 5: Reserved */
 #define QSPI_RSER_IPIEIE  (1 << 6)  /* Bit 6:  IP Command Trigger during IP Access Error
                                      * Error Interrupt Enable
                                      */
 #define QSPI_RSER_IPAEIE  (1 << 7)  /* Bit 7:  IP Command Trigger during AHB Access Error
                                      * Error Interrupt Enable
                                      */
+                                    /* Bits 8-10: Reserved */
 #define QSPI_RSER_IUEIE   (1 << 11) /* Bit 11: IP Command Usage Error Interrupt Enable */
 #define QSPI_RSER_ABOIE   (1 << 12) /* Bit 12: AHB Buffer Overflow Interrupt Enable */
 #define QSPI_RSER_AIBSIE  (1 << 13) /* Bit 13: AHB Illegal Burst Size Interrupt Enable */
@@ -717,15 +752,19 @@
                                      * Enables generation of IRQ requests for RX Buffer Drain
                                      */
 #define QSPI_RSER_RBOIE   (1 << 17) /* Bit 17: RX Buffer Overflow Interrupt Enable */
+                                    /* Bits 18-20: Reserved */
 #define QSPI_RSER_RBDDE   (1 << 21) /* Bit 21: RX Buffer Drain DMA Enable:
                                      * Enables generation of DMA requests for RX Buffer Drain
                                      */
+                                    /* Bit 22: Reserved */
 #define QSPI_RSER_ILLINIE (1 << 23) /* Bit 23: Illegal Instruction Error Interrupt Enable.
                                      * Triggered by ILLINE flag in QSPI_FR
                                      */
+                                    /* Bit 24: Reserved */
 #define QSPI_RSER_TBFDE   (1 << 25) /* Bit 25: TX Buffer Fill DMA Enable */
 #define QSPI_RSER_TBUIE   (1 << 26) /* Bit 26: TX Buffer Underrun Interrupt Enable */
 #define QSPI_RSER_TBFIE   (1 << 27) /* Bit 27: TX Buffer Fill Interrupt Enable */
+                                    /* Bits 28-30: Reserved */
 #define QSPI_RSER_DLPFIE  (1 << 31) /* Bit 31: Data Learning Pattern Failure Interrupt enable.
                                      * Triggered by DLPFF flag in QSPI_FR register */
 
@@ -734,28 +773,32 @@
 #define QSPI_SPNDST_SUSPND (1 << 0)  /* Bit 0:  When set, it signifies that a sequence
                                       * is in suspended state
                                       */
-
+                                     /* Bits 1-5: Reserved */
 #define QSPI_SPNDST_SPDBUF_SHIFT (6) /* Bits 6-7: Suspended Buffer: Provides the suspended buffer
                                       * number. Valid only when SUSPND is set to 1
                                       */
 #define QSPI_SPNDST_SPDBUF_MASK  (0x3 << QSPI_SPNDST_SPDBUF_SHIFT)
-
+                                     /* Bit 8: Reserved */
 #define QSPI_SPNDST_DATLFT_SHIFT (9) /* Bits 9-14: Data left: Provides information about the amount
                                       * of data left to be read in the suspended sequence */
 #define QSPI_SPNDST_DATLFT_MASK  (0x3f << QSPI_SPNDST_DATLFT_SHIFT)
+                                     /* Bits 15-31: Reserved */
 
 /* QSPI Sequence Pointer Clear Register */
 
 #define QSPI_SPTRCLR_BFPTRC (1 << 0)  /* Bit 0:  Buffer Pointer Clear: 1: Clears the sequence pointer
                                        * for AHB accesses as defined in QuadSPI_BFGENCR
                                        */
+                                      /* Bits 1-7: Reserved */
 #define QSPI_SPTRCLR_IPPTRC (1 << 8)  /* Bit 8:  IP Pointer Clear: 1: Clears the sequence pointer
                                        * for IP accesses as defined in QuadSPI_IPCR.
                                        * This is a self-clearing field
                                        */
+                                      /* Bits 9-31: Reserved */
 
 /* QSPI Serial Flash A1 Top Address */
 
+                                      /* Bits 0-9: Reserved */
 #define QSPI_SFA1AD_TPADA1_SHIFT (10) /* Bits 10-31: Top address for Serial Flash A1.
                                        * In effect, TPADxx is the first location of the next memory.
                                        */
@@ -764,6 +807,7 @@
 
 /* QSPI Serial Flash A2 Top Address */
 
+                                      /* Bits 0-9: Reserved */
 #define QSPI_SFA2AD_TPADA2_SHIFT (10) /* Bits 10-31: Top address for Serial Flash A2.
                                        * In effect, TPxxAD is the first location of the next memory.
                                        */
@@ -772,6 +816,7 @@
 
 /* QSPI Serial Flash B1 Top Address */
 
+                                      /* Bits 0-9: Reserved */
 #define QSPI_SFB1AD_TPADB1_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B1.
                                        * In effect, TPxxAD is the first location of the next memory.
                                        */
@@ -780,6 +825,7 @@
 
 /* QSPI Serial Flash B2 Top Address */
 
+                                      /* Bits 0-9: Reserved */
 #define QSPI_SFB2AD_TPADB2_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B2.
                                        * In effect, TPxxAD is the first location of the next memory.
                                        */
@@ -796,6 +842,7 @@
                                      * 1. This register is written just after the LUT Key Register
                                      * 2. The LUT key register was written with 0x5AF05AF0 key
                                      */
+                                    /* Bits 2-31: Reserved */
 
 /* QSPI Look-up Table register */
 
@@ -803,7 +850,7 @@
 #define QSPI_LUT_OPRND0_MASK  (0xff << QSPI_LUT_OPRND0_SHIFT)
 #  define QSPI_LUT_OPRND0(n)  ((n << QSPI_LUT_OPRND0_SHIFT) & QSPI_LUT_OPRND0_MASK)
 
-#define QSPI_LUT_PAD0_SHIFT (8) /* Bits 8-9: Pad information for INSTR0. */
+#define QSPI_LUT_PAD0_SHIFT (8)   /* Bits 8-9: Pad information for INSTR0. */
 #define QSPI_LUT_PAD0_MASK  (0x3 << QSPI_LUT_PAD0_SHIFT)
 #  define QSPI_LUT_PAD0(n)  ((n << QSPI_LUT_PAD0_SHIFT) & QSPI_LUT_PAD0_MASK)
 #  define QSPI_LUT_PAD0_1   (0  << QSPI_LUT_PAD0_SHIFT) /* 1 Pad */
