@@ -274,9 +274,7 @@
 
 #define QSPI_MCR_SWRSTSD    (1 << 0)  /* Bit 0:  Software reset for serial flash domain */
 #define QSPI_MCR_SWRSTHD    (1 << 1)  /* Bit 1:  Software reset for AHB domain */
-#define QSPI_MCR_END_CFG_SHIFT (2)    /* Bits 2-3: Defines the endianness of the QuadSPI module. 
-                                       * For more details refer to Byte Ordering Endianess+
-                                       */
+#define QSPI_MCR_END_CFG_SHIFT (2)    /* Bits 2-3: Defines the endianness of the QuadSPI module. */
 #define QSPI_MCR_END_CFG_MASK  (0x3 << QSPI_MCR_END_CFG_SHIFT)
 #  define QSPI_MCR_END_CFG(n)  ((n << QSPI_MCR_END_CFG_SHIFT) & QSPI_MCR_END_CFG_MASK)
                                       /* Bit 4:  Reserved */
@@ -285,11 +283,9 @@
 #define QSPI_MCR_DDR_EN     (1 << 7)  /* Bit 7:  DDR mode enable */
                                       /* Bits 8-9: Reserved */
 #define QSPI_MCR_CLR_RXF    (1 << 10) /* Bit 10: Clear RX FIFO. Invalidates the RX Buffer.
-                                       * This is a self-clearing field.
-                                       */
+                                       * This is a self-clearing field. */
 #define QSPI_MCR_CLR_TXF    (1 << 11) /* Bit 11: Clear TX FIFO/Buffer. Invalidates the TX Buffer.
-                                       * This is a self-clearing field.
-                                       */
+                                       * This is a self-clearing field. */
                                       /* Bits 12-13: Reserved */
 #define QSPI_MCR_MDIS       (1 << 14) /* Bit 14: Module Disable */
                                       /* Bit 15: Reserved */
@@ -305,14 +301,12 @@
 /* QSPI IP Configuration Register */
 
 #define QSPI_IPCR_IDATSZ_SHIFT (0) /* Bits 0-15: IP data transfer size. Defines the data transfer
-                                    * size in bytes of the IP command.
-                                    */
+                                    * size in bytes of the IP command. */
 #define QSPI_IPCR_IDATSZ_MASK  (0xffff << QSPI_IPCR_IDATSZ_SHIFT)
 #  define QSPI_IPCR_IDATSZ(n)  ((n << QSPI_IPCR_IDATSZ_SHIFT) & QSPI_IPCR_IDATSZ_MASK)
 
 #define QSPI_IPCR_PAR_EN (1 << 16) /* Bit 16: When set, a transaction to two serial flash devices
-                                    * is triggered in parallel mode
-                                    */
+                                    * is triggered in parallel mode */
                                    /* Bits 17-23: Reserved */
 #define QSPI_IPCR_SEQID_SHIFT (24) /* Bits 24-27: Points to a sequence in the Look-up table */
 #define QSPI_IPCR_SEQID_MASK  (0xf << QSPI_IPCR_SEQID_SHIFT)
@@ -333,14 +327,11 @@
 #define QSPI_FLSHCR_TDH_MASK  (0x3 << QSPI_FLSHCR_TDH_SHIFT)
 #  define QSPI_FLSHCR_TDH(n)  ((n << QSPI_FLSHCR_TDH_SHIFT) & QSPI_FLSHCR_TDH_MASK)
 #  define QSPI_FLSHCR_TDH_0   (0  << QSPI_FLSHCR_TDH_SHIFT) /* Data aligned with posedge of
-                                                             * Internal reference clock of QuadSPI
-                                                             */
+                                                             * Internal reference clock of QuadSPI */
 #  define QSPI_FLSHCR_TDH_1   (1  << QSPI_FLSHCR_TDH_SHIFT) /* Data aligned with 2x serial flash
-                                                             * half clock
-                                                             */
+                                                             * half clock */
 #  define QSPI_FLSHCR_TDH_2   (2  << QSPI_FLSHCR_TDH_SHIFT) /* Data aligned with 4x serial flash
-                                                             * half clock
-                                                             */
+                                                             * half clock */
 
                                    /* Bits 18-31: Reserved */
 
@@ -397,8 +388,7 @@
 #define QSPI_BFGENCR_SEQID_MASK  (0xf << QSPI_BFGENCR_SEQID_SHIFT)
 #  define QSPI_BFGENCR_SEQID(n)  ((n << QSPI_BFGENCR_SEQID_SHIFT) & QSPI_BFGENCR_SEQID_MASK)
 #define QSPI_BFGENCR_PAR_EN (1 << 16) /* Bit 16: When set, a transaction to two serial flash
-                                       * devices is triggered in parallel mode
-                                       */
+                                       * devices is triggered in parallel mode */
                                       /* Bits 17-31: Reserved */
 
 /* QSPI SOC Configuration Register */
@@ -417,15 +407,12 @@
                                         /* Bits 3-7: Reserved */
 #define QSPI_SOCCR_DQSLPEN    (1 << 8)  /* Bit 8:  When this bit is set the internal generated DQS is
                                          * selected and looped back to QuadSPI, without going to DQS
-                                         * pad. DQSPADLPEN should be cleared when this bit is set.
-                                         */
+                                         * pad. DQSPADLPEN should be cleared when this bit is set. */
 #define QSPI_SOCCR_DQSPADLPEN (1 << 9)  /* Bit 9:  When this bit is set the internal generated DQS
                                          * will be sent to the DQS pad first and then looped back to
-                                         * QuadSPI. DQSLPEN should be cleared when this bit is set.
-                                         */
+                                         * QuadSPI. DQSLPEN should be cleared when this bit is set. */
 #define QSPI_SOCCR_DQSPHASEL_SHIFT (10) /* Bits 10-11: Phase shift for internal DQS generation.
-                                         * These bits are always zero in SDR mode.
-                                         */
+                                         * These bits are always zero in SDR mode. */
 #define QSPI_SOCCR_DQSPHASEL_MASK  (0x3 << QSPI_SOCCR_DQSPHASEL_SHIFT)
 #  define QSPI_SOCCR_DQSPHASEL(n)  ((n << QSPI_SOCCR_DQSPHASEL_SHIFT) & QSPI_SOCCR_DQSPHASEL_MASK)
 #  define QSPI_SOCCR_DQSPHASEL_0   (0  << QSPI_SOCCR_DQSPHASEL_SHIFT) /*   0 degree phase shift */
@@ -616,8 +603,7 @@
 #define QSPI_SMPR_FSPHS  (1 << 5)   /* Bit 5:  Full Speed Phase selection for SDR instructions. */
 #define QSPI_SMPR_FSDLY  (1 << 6)   /* Bit 6:  Full Speed Delay selection for SDR instructions.
                                      * Select the delay with respect to the reference edge for the
-                                     * sample point valid for full speed commands.
-                                     */
+                                     * sample point valid for full speed commands. */
                                     /* Bits 7-15: Reserved */
 #define QSPI_SMPR_DDRSMP_SHIFT (16) /* Bits 16-18: DDR Sampling point */
 #define QSPI_SMPR_DDRSMP_MASK  (0x7 << QSPI_SMPR_DDRSMP_SHIFT)
@@ -641,8 +627,7 @@
 #  define QSPI_RBCT_WMRK(n)  ((n << QSPI_RBCT_WMRK_SHIFT) & QSPI_RBCT_WMRK_MASK)
                                   /* Bits 4-7: Reserved */
 #define QSPI_RBCT_RXBRD (1 << 8)  /* Bit 8:  RX Buffer Readout. This field specifies the access
-                                   * scheme for the RX Buffer readout.
-                                   */
+                                   * scheme for the RX Buffer readout. */
                                   /* Bits 9-31: Reserved */
 
 /* QSPI TX Buffer Status Register */
@@ -665,16 +650,13 @@
 
 #define QSPI_SR_BUSY    (1 << 0)  /* Bit 0:  Module Busy */
 #define QSPI_SR_IP_ACC  (1 << 1)  /* Bit 1:  IP Access. Asserted when transaction currently executed
-                                   * was initiated by IP bus.
-                                   */
+                                   * was initiated by IP bus. */
 #define QSPI_SR_AHB_ACC (1 << 2)  /* Bit 2:  AHB Access. Asserted when the transaction currently
-                                   * executed was initiated by AHB bus.
-                                   */
+                                   * executed was initiated by AHB bus. */
                                   /* Bits 3-4: Reserved */
 #define QSPI_SR_AHBGNT  (1 << 5)  /* Bit 5:  AHB Command priority Granted: Asserted when another
                                    * module has been granted priority of AHB Commands against
-                                   * IP Commands.
-                                   */
+                                   * IP Commands. */
 #define QSPI_SR_AHBTRN  (1 << 6)  /* Bit 6:  AHB Access Transaction pending */
 #define QSPI_SR_AHB0NE  (1 << 7)  /* Bit 7:  AHB 0 Buffer Not Empty */
 #define QSPI_SR_AHB1NE  (1 << 8)  /* Bit 8:  AHB 1 Buffer Not Empty */
@@ -690,14 +672,12 @@
 #define QSPI_SR_RXFULL  (1 << 19) /* Bit 19: RX Buffer Full */
                                   /* Bits 20-22: Reserved */
 #define QSPI_SR_RXDMA   (1 << 23) /* Bit 23: RX Buffer DMA. Asserted when RX Buffer read out via DMA
-                                   * is active i.e DMA is requested or running.
-                                   */
+                                   * is active i.e DMA is requested or running. */
 #define QSPI_SR_TXEDA   (1 << 24) /* Bit 24: Tx Buffer Enough Data Available */
 #define QSPI_SR_TXWA    (1 << 25) /* Bit 25: TX Buffer watermark Available */
 #define QSPI_SR_TXDMA   (1 << 26) /* Bit 26: TXDMA */
 #define QSPI_SR_TXFULL  (1 << 27) /* Bit 27: TX Buffer Full.
-                                   * Asserted when no more data can be stored.
-                                   */
+                                   * Asserted when no more data can be stored. */
                                   /* Bit 28: Reserved */
 #define QSPI_SR_DLPSMP_SHIFT (29) /* Bits 29-31: Data learning pattern sampling point */
 #define QSPI_SR_DLPSMP_MASK  (0x7 << QSPI_SR_DLPSMP_SHIFT)
@@ -731,35 +711,28 @@
 #define QSPI_RSER_TFIE    (1 << 0)  /* Bit 0:  Transaction Finished Interrupt Enable */
                                     /* Bits 1-3: Reserved */
 #define QSPI_RSER_IPGEIE  (1 << 4)  /* Bit 4:  IP Command Trigger during AHB Grant
-                                     * Error Interrupt Enable
-                                     */
+                                     * Error Interrupt Enable */
                                     /* Bit 5: Reserved */
-#define QSPI_RSER_IPIEIE  (1 << 6)  /* Bit 6:  IP Command Trigger during IP Access Error
-                                     * Error Interrupt Enable
-                                     */
-#define QSPI_RSER_IPAEIE  (1 << 7)  /* Bit 7:  IP Command Trigger during AHB Access Error
-                                     * Error Interrupt Enable
-                                     */
+#define QSPI_RSER_IPIEIE  (1 << 6)  /* Bit 6:  IP Command Trigger during IP Access
+                                     * Error Interrupt Enable */
+#define QSPI_RSER_IPAEIE  (1 << 7)  /* Bit 7:  IP Command Trigger during AHB Access
+                                     * Error Interrupt Enable */
                                     /* Bits 8-10: Reserved */
 #define QSPI_RSER_IUEIE   (1 << 11) /* Bit 11: IP Command Usage Error Interrupt Enable */
 #define QSPI_RSER_ABOIE   (1 << 12) /* Bit 12: AHB Buffer Overflow Interrupt Enable */
 #define QSPI_RSER_AIBSIE  (1 << 13) /* Bit 13: AHB Illegal Burst Size Interrupt Enable */
 #define QSPI_RSER_AITIE   (1 << 14) /* Bit 14: AHB Illegal Transaction Interrupt Enable. */
 #define QSPI_RSER_ABSEIE  (1 << 15) /* Bit 15: AHB Sequence Error Interrupt Enable:
-                                     * Triggered by ABSEF flags of QSPI_FR
-                                     */
+                                     * Triggered by ABSEF flags of QSPI_FR */
 #define QSPI_RSER_RBDIE   (1 << 16) /* Bit 16: RX Buffer Drain Interrupt Enable:
-                                     * Enables generation of IRQ requests for RX Buffer Drain
-                                     */
+                                     * Enables generation of IRQ requests for RX Buffer Drain */
 #define QSPI_RSER_RBOIE   (1 << 17) /* Bit 17: RX Buffer Overflow Interrupt Enable */
                                     /* Bits 18-20: Reserved */
 #define QSPI_RSER_RBDDE   (1 << 21) /* Bit 21: RX Buffer Drain DMA Enable:
-                                     * Enables generation of DMA requests for RX Buffer Drain
-                                     */
+                                     * Enables generation of DMA requests for RX Buffer Drain */
                                     /* Bit 22: Reserved */
 #define QSPI_RSER_ILLINIE (1 << 23) /* Bit 23: Illegal Instruction Error Interrupt Enable.
-                                     * Triggered by ILLINE flag in QSPI_FR
-                                     */
+                                     * Triggered by ILLINE flag in QSPI_FR */
                                     /* Bit 24: Reserved */
 #define QSPI_RSER_TBFDE   (1 << 25) /* Bit 25: TX Buffer Fill DMA Enable */
 #define QSPI_RSER_TBUIE   (1 << 26) /* Bit 26: TX Buffer Underrun Interrupt Enable */
@@ -775,8 +748,7 @@
                                       */
                                      /* Bits 1-5: Reserved */
 #define QSPI_SPNDST_SPDBUF_SHIFT (6) /* Bits 6-7: Suspended Buffer: Provides the suspended buffer
-                                      * number. Valid only when SUSPND is set to 1
-                                      */
+                                      * number. Valid only when SUSPND is set to 1 */
 #define QSPI_SPNDST_SPDBUF_MASK  (0x3 << QSPI_SPNDST_SPDBUF_SHIFT)
                                      /* Bit 8: Reserved */
 #define QSPI_SPNDST_DATLFT_SHIFT (9) /* Bits 9-14: Data left: Provides information about the amount
@@ -787,21 +759,18 @@
 /* QSPI Sequence Pointer Clear Register */
 
 #define QSPI_SPTRCLR_BFPTRC (1 << 0)  /* Bit 0:  Buffer Pointer Clear: 1: Clears the sequence pointer
-                                       * for AHB accesses as defined in QuadSPI_BFGENCR
-                                       */
+                                       * for AHB accesses as defined in QuadSPI_BFGENCR */
                                       /* Bits 1-7: Reserved */
 #define QSPI_SPTRCLR_IPPTRC (1 << 8)  /* Bit 8:  IP Pointer Clear: 1: Clears the sequence pointer
                                        * for IP accesses as defined in QuadSPI_IPCR.
-                                       * This is a self-clearing field
-                                       */
+                                       * This is a self-clearing field */
                                       /* Bits 9-31: Reserved */
 
 /* QSPI Serial Flash A1 Top Address */
 
                                       /* Bits 0-9: Reserved */
 #define QSPI_SFA1AD_TPADA1_SHIFT (10) /* Bits 10-31: Top address for Serial Flash A1.
-                                       * In effect, TPADxx is the first location of the next memory.
-                                       */
+                                       * In effect, TPADxx is the first location of the next memory. */
 #define QSPI_SFA1AD_TPADA1_MASK  (0x3fffff << QSPI_SFA1AD_TPADA1_SHIFT)
 #  define QSPI_SFA1AD_TPADA1(n)  ((n << QSPI_SFA1AD_TPADA1_SHIFT) & QSPI_SFA1AD_TPADA1_MASK)
 
@@ -809,26 +778,23 @@
 
                                       /* Bits 0-9: Reserved */
 #define QSPI_SFA2AD_TPADA2_SHIFT (10) /* Bits 10-31: Top address for Serial Flash A2.
-                                       * In effect, TPxxAD is the first location of the next memory.
-                                       */
+                                       * In effect, TPxxAD is the first location of the next memory. */
 #define QSPI_SFA2AD_TPADA2_MASK  (0x3fffff << QSPI_SFA2AD_TPADA2_SHIFT)
 #  define QSPI_SFA2AD_TPADA2(n)  ((n << QSPI_SFA2AD_TPADA2_SHIFT) & QSPI_SFA2AD_TPADA2_MASK)
 
 /* QSPI Serial Flash B1 Top Address */
 
                                       /* Bits 0-9: Reserved */
-#define QSPI_SFB1AD_TPADB1_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B1.
-                                       * In effect, TPxxAD is the first location of the next memory.
-                                       */
+#define QSPI_SFB1AD_TPADB1_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B1. In effect,
+                                       * TPxxAD is the first location of the next memory. */
 #define QSPI_SFB1AD_TPADB1_MASK  (0x3fffff << QSPI_SFB1AD_TPADB1_SHIFT)
 #  define QSPI_SFB1AD_TPADB1(n)  ((n << QSPI_SFB1AD_TPADB1_SHIFT) & QSPI_SFB1AD_TPADB1_MASK)
 
 /* QSPI Serial Flash B2 Top Address */
 
                                       /* Bits 0-9: Reserved */
-#define QSPI_SFB2AD_TPADB2_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B2.
-                                       * In effect, TPxxAD is the first location of the next memory.
-                                       */
+#define QSPI_SFB2AD_TPADB2_SHIFT (10) /* Bits 10-31: Top address for Serial Flash B2. In effect,
+                                       * TPxxAD is the first location of the next memory. */
 #define QSPI_SFB2AD_TPADB2_MASK  (0x3fffff << QSPI_SFB2AD_TPADB2_SHIFT)
 #  define QSPI_SFB2AD_TPADB2(n)  ((n << QSPI_SFB2AD_TPADB2_SHIFT) & QSPI_SFB2AD_TPADB2_MASK)
 
@@ -836,21 +802,19 @@
 
 #define QSPI_LCKCR_LOCK   (1 << 0)  /* Bit 0:  Locks the LUT when the following conditions are met:
                                      * 1. This register is written just after the LUT Key Register
-                                     * 2. The LUT key register was written with 0x5AF05AF0 key
-                                     */
+                                     * 2. The LUT key register was written with 0x5AF05AF0 key */
 #define QSPI_LCKCR_UNLOCK (1 << 1)  /* Bit 1:  Unlocks the LUT when the following conditions are met:
                                      * 1. This register is written just after the LUT Key Register
-                                     * 2. The LUT key register was written with 0x5AF05AF0 key
-                                     */
+                                     * 2. The LUT key register was written with 0x5AF05AF0 key */
                                     /* Bits 2-31: Reserved */
 
 /* QSPI Look-up Table register */
 
-#define QSPI_LUT_OPRND0_SHIFT (0) /* Bits 0-7: Operand for INSTR0. */
+#define QSPI_LUT_OPRND0_SHIFT (0)  /* Bits 0-7: Operand for INSTR0. */
 #define QSPI_LUT_OPRND0_MASK  (0xff << QSPI_LUT_OPRND0_SHIFT)
 #  define QSPI_LUT_OPRND0(n)  ((n << QSPI_LUT_OPRND0_SHIFT) & QSPI_LUT_OPRND0_MASK)
 
-#define QSPI_LUT_PAD0_SHIFT (8)   /* Bits 8-9: Pad information for INSTR0. */
+#define QSPI_LUT_PAD0_SHIFT (8)    /* Bits 8-9: Pad information for INSTR0. */
 #define QSPI_LUT_PAD0_MASK  (0x3 << QSPI_LUT_PAD0_SHIFT)
 #  define QSPI_LUT_PAD0(n)  ((n << QSPI_LUT_PAD0_SHIFT) & QSPI_LUT_PAD0_MASK)
 #  define QSPI_LUT_PAD0_1   (0  << QSPI_LUT_PAD0_SHIFT) /* 1 Pad */
@@ -866,7 +830,7 @@
 #define QSPI_LUT_OPRND1_MASK  (0xff << QSPI_LUT_OPRND1_SHIFT)
 #  define QSPI_LUT_OPRND1(n)  ((n << QSPI_LUT_OPRND1_SHIFT) & QSPI_LUT_OPRND1_MASK)
 
-#define QSPI_LUT_PAD1_SHIFT (24) /* Bits 24-25: Pad information for INSTR1. */
+#define QSPI_LUT_PAD1_SHIFT (24)   /* Bits 24-25: Pad information for INSTR1. */
 #define QSPI_LUT_PAD1_MASK  (0x3 << QSPI_LUT_PAD1_SHIFT)
 #  define QSPI_LUT_PAD1(n)  ((n << QSPI_LUT_PAD1_SHIFT) & QSPI_LUT_PAD1_MASK)
 #  define QSPI_LUT_PAD1_1   (0  << QSPI_LUT_PAD1_SHIFT) /* 1 Pad */
