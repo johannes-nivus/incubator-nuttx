@@ -254,74 +254,7 @@ config KINETIS_HAVE_LPUART3
 config KINETIS_HAVE_LPUART4
 	bool
 	default n
-
-# When there are multiple instances of a device, these "hidden" settings
-# will automatically be selected and will represent the 'OR' of the
-# instances selected.
-
-config KINETIS_SERIALDRIVER
-	bool
-	default n
-
-config KINETIS_LPUART
-	bool
-	default n
-	select MCU_SERIAL
-
-config KINETIS_UART
-	bool
-	default n
-	select MCU_SERIAL
-
-# Chip families
-
-config ARCH_FAMILY_K20
-	bool
-	default n
-	select KINETIS_HAVE_UART5
-
-config ARCH_FAMILY_K28
-	bool
-	default n
-	select KINETIS_HAVE_I2C1
-	select KINETIS_HAVE_FTM3
-	select KINETIS_HAVE_LPUART0
-	select KINETIS_HAVE_LPUART1
-	select KINETIS_HAVE_LPUART2
-	select KINETIS_HAVE_LPUART3
-	select KINETIS_HAVE_LPUART4
-	select KINETIS_HAVE_TPM1
-	select KINETIS_HAVE_TPM2
-
-config ARCH_FAMILY_K40
-	bool
-	default n
-	select KINETIS_HAVE_UART5
-
-config ARCH_FAMILY_K60
-	bool
-	default n
-	select KINETIS_HAVE_UART5
-
-config ARCH_FAMILY_K64
-	bool
-	default n
-	select KINETIS_HAVE_FTM3
-	select KINETIS_HAVE_UART5
-
-config ARCH_FAMILY_K66
-	bool
-	default n
-	select KINETIS_HAVE_FTM3
-	select KINETIS_HAVE_LPUART0
-	select KINETIS_HAVE_TPM1
-	select KINETIS_HAVE_TPM2
-	select KINETIS_HAVE_DMA
-	select KINETIS_HAVE_FLEXCAN0
-	select KINETIS_HAVE_FLEXCAN1
-
-menu "Kinetis Peripheral Support"
-
+	
 config KINETIS_HAVE_FTM3
 	bool
 	default n
@@ -365,6 +298,82 @@ config KINETIS_HAVE_FLEXCAN0
 config KINETIS_HAVE_FLEXCAN1
 	bool
 	default n
+
+config KINETIS_HAVE_QSPI0
+	bool
+	default n
+
+# When there are multiple instances of a device, these "hidden" settings
+# will automatically be selected and will represent the 'OR' of the
+# instances selected.
+
+config KINETIS_SERIALDRIVER
+	bool
+	default n
+
+config KINETIS_LPUART
+	bool
+	default n
+	select MCU_SERIAL
+
+config KINETIS_UART
+	bool
+	default n
+	select MCU_SERIAL
+
+config KINETIS_QSPI
+	bool
+	default n
+
+# Chip families
+
+config ARCH_FAMILY_K20
+	bool
+	default n
+	select KINETIS_HAVE_UART5
+
+config ARCH_FAMILY_K28
+	bool
+	default n
+	select KINETIS_HAVE_I2C1
+	select KINETIS_HAVE_FTM3
+	select KINETIS_HAVE_LPUART0
+	select KINETIS_HAVE_LPUART1
+	select KINETIS_HAVE_LPUART2
+	select KINETIS_HAVE_LPUART3
+	select KINETIS_HAVE_LPUART4
+	select KINETIS_HAVE_TPM1
+	select KINETIS_HAVE_TPM2
+	select KINETIS_HAVE_QSPI0
+
+config ARCH_FAMILY_K40
+	bool
+	default n
+	select KINETIS_HAVE_UART5
+
+config ARCH_FAMILY_K60
+	bool
+	default n
+	select KINETIS_HAVE_UART5
+
+config ARCH_FAMILY_K64
+	bool
+	default n
+	select KINETIS_HAVE_FTM3
+	select KINETIS_HAVE_UART5
+
+config ARCH_FAMILY_K66
+	bool
+	default n
+	select KINETIS_HAVE_FTM3
+	select KINETIS_HAVE_LPUART0
+	select KINETIS_HAVE_TPM1
+	select KINETIS_HAVE_TPM2
+	select KINETIS_HAVE_DMA
+	select KINETIS_HAVE_FLEXCAN0
+	select KINETIS_HAVE_FLEXCAN1
+
+menu "Kinetis Peripheral Support"
 
 config KINETIS_TRACE
 	bool "Trace"
@@ -555,6 +564,14 @@ config KINETIS_SPI2
 	depends on KINETIS_HAVE_SPI2
 	---help---
 		Support SPI2
+
+config KINETIS_QSPI0
+	bool "QSPI0"
+	default n
+	select KINETIS_QSPI
+	depends on KINETIS_HAVE_QSPI0
+	---help---
+		Support QSPI0
 
 config KINETIS_I2C0
 	bool "I2C0"

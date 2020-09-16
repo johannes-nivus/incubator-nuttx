@@ -611,8 +611,8 @@
 #define PIN_QSPI0A_SCLK_2               (PIN_ALT7 | PIN_PORTC | PIN25)
 #define PIN_QSPI0A_SS0_B_1              (PIN_ALT5 | PIN_PORTE | PIN5)
 #define PIN_QSPI0A_SS0_B_2              (PIN_ALT7 | PIN_PORTC | PIN29)
-#define PIN_QSPI0A_SS1_B_3              (PIN_ALT7 | PIN_PORTC | PIN19)
-#define PIN_QSPI0A_SS1_B_4              (PIN_ALT7 | PIN_PORTE | PIN7)
+#define PIN_QSPI0A_SS1_B_1              (PIN_ALT7 | PIN_PORTC | PIN19)
+#define PIN_QSPI0A_SS1_B_2              (PIN_ALT7 | PIN_PORTE | PIN7)
 
 #define PIN_QSPI0B_DATA0                (PIN_ALT5 | PIN_PORTE | PIN8)
 #define PIN_QSPI0B_DATA1                (PIN_ALT5 | PIN_PORTE | PIN10)

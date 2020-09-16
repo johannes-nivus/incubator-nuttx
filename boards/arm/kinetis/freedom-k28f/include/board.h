@@ -426,6 +426,17 @@
 #  define PIN_SDHC0_DCLK    PIN_SDHC0_DCLK_1
 #endif
 
+/* QSPI */
+
+#ifdef CONFIG_KINETIS_QSPI0
+#  define PIN_QSPI0A_SS0_B  PIN_QSPI0A_SS0_B_1
+#  define PIN_QSPI0A_DATA0  PIN_QSPI0A_DATA0_1
+#  define PIN_QSPI0A_DATA1  PIN_QSPI0A_DATA1_1
+#  define PIN_QSPI0A_DATA2  PIN_QSPI0A_DATA2_1
+#  define PIN_QSPI0A_DATA3  PIN_QSPI0A_DATA3_1
+#  define PIN_QSPI0A_SCLK   PIN_QSPI0A_SCLK_1
+#endif
+
 /* LED definitions **************************************************************/
 
 /* The Freedom K28F has a single RGB LED driven by the K28F as follows:

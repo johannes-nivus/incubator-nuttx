@@ -1,5 +1,5 @@
 /****************************************************************************************************
- * arch/arm/src/kinetis/hardware/kinetis_lpuart.h
+ * arch/arm/src/kinetis/hardware/kinetis_qspi.h
  *
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
