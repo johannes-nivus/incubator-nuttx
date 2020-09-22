@@ -40,7 +40,6 @@
 #include <nuttx/clock.h>
 #include <nuttx/kmalloc.h>
 #include <nuttx/semaphore.h>
-#include <nuttx/spi/qspi.h>
 
 #include "arm_internal.h"
 #include "arm_arch.h"
@@ -48,6 +47,7 @@
 
 #include "hardware/kinetis_memorymap.h"
 #include "hardware/kinetis_qspi.h"
+#include "kinetis_qspi.h"
 
 #ifdef CONFIG_KINETIS_QSPI
 
@@ -115,18 +115,10 @@
 struct kinetis_qspidev_s
 {
   struct kqspi_dev_s qspi;      /* Externally visible part of the QSPI interface */
-#ifdef QSPI_USE_INTERRUPTS
-  xcpt_t handler;              /* Interrupt handler */
-#endif
   uint32_t base;               /* QSPI controller register base address */
   uint32_t frequency;          /* Requested clock frequency */
   uint32_t actual;             /* Actual clock frequency */
-  uint8_t mode;                /* Mode 0,1,2,3 */
-  uint8_t nbits;               /* Width of word in bits (8 to 16) */
   uint8_t intf;                /* QSPI controller number (0) */
-#ifdef QSPI_USE_INTERRUPTS
-  uint8_t irq;                 /* Interrupt number */
-#endif
   bool initialized;            /* TRUE: Controller has been initialized */
   sem_t exclsem;               /* Assures mutually exclusive access to QSPI */
 
@@ -198,40 +190,21 @@ static inline uintptr_t qspi_regaddr(struct kinetis_qspidev_s *priv,
                   unsigned int offset);
 #endif
 
-static int      qspi_memory_enable(struct kinetis_qspidev_s *priv,
-                  struct qspi_meminfo_s *meminfo);
-#ifdef CONFIG_KINETIS_QSPI_DMA
-static int      qspi_memory_dma(struct kinetis_qspidev_s *priv,
-                  struct qspi_meminfo_s *meminfo);
-#endif
-
-static int      qspi_memory_nodma(struct kinetis_qspidev_s *priv,
-                  struct qspi_meminfo_s *meminfo);
 static void     qspi_memcpy(uint8_t *dest, const uint8_t *src,
                   size_t buflen);
 
-/* Interrupts */
-
-#ifdef QSPI_USE_INTERRUPTS
-static int     qspi_interrupt(struct kinetis_qspidev_s *priv);
-#ifdef CONFIG_KINETIS_QSPI
-static int     qspi0_interrupt(int irq, void *context, FAR void *arg);
-#endif
-#endif
-
 /* QSPI methods */
 
-static int      qspi_lock(struct qspi_dev_s *dev, bool lock);
-static uint32_t qspi_setfrequency(struct qspi_dev_s *dev,
+static int      qspi_lock(FAR struct kqspi_dev_s *dev, bool lock);
+static uint32_t qspi_setfrequency(FAR struct kqspi_dev_s *dev,
                                   uint32_t frequency);
-static void     qspi_setmode(struct qspi_dev_s *dev, enum qspi_mode_e mode);
-static void     qspi_setbits(struct qspi_dev_s *dev, int nbits);
-static int      qspi_command(struct qspi_dev_s *dev,
-                  struct qspi_cmdinfo_s *cmdinfo);
-static int      qspi_memory(struct qspi_dev_s *dev,
-                  struct qspi_meminfo_s *meminfo);
-static FAR void *qspi_alloc(FAR struct qspi_dev_s *dev, size_t buflen);
-static void     qspi_free(FAR struct qspi_dev_s *dev, FAR void *buffer);
+static FAR void *qspi_alloc(FAR struct kqspi_dev_s *dev, size_t buflen);
+static void     qspi_free(FAR struct kqspi_dev_s *dev, FAR void *buffer);
+static int      qspi_command(FAR struct kqspi_dev_s *dev,
+                  FAR struct kqspi_cmdinfo_s *cmdinfo);
+static void     qspi_setconfig(FAR struct kqspi_dev_s *dev,
+                  FAR struct kqspi_config_s *conf);
+static void     qspi_setlut(FAR struct kqspi_dev_s *dev, FAR uint32_t *lut);
 
 /* Initialization */
 
@@ -244,16 +217,15 @@ static int      qspi_hw_initialize(struct kinetis_qspidev_s *priv);
 #ifdef CONFIG_KINETIS_QSPI
 /* QSPI0 driver operations */
 
-static const struct qspi_ops_s g_qspi0ops =
+static const struct kqspi_ops_s g_qspi0ops =
 {
   .lock              = qspi_lock,
   .setfrequency      = qspi_setfrequency,
-  .setmode           = qspi_setmode,
-  .setbits           = qspi_setbits,
   .command           = qspi_command,
-  .memory            = qspi_memory,
   .alloc             = qspi_alloc,
   .free              = qspi_free,
+  .setconfig         = qspi_setconfig,
+  .setlut            = qspi_setlut
 };
 
 /* This is the overall state of the QSPI0 controller */
@@ -265,13 +237,7 @@ static struct kinetis_qspidev_s g_qspi0dev =
     .ops             = &g_qspi0ops,
   },
   .base              = KINETIS_QSPI0C_BASE,
-#ifdef QSPI_USE_INTERRUPTS
-  .handler           = qspi0_interrupt,
-#endif
   .intf              = 0,
-#ifdef QSPI_USE_INTERRUPTS
-  .irq               = SAM_IRQ_QSPI,
-#endif
 #ifdef CONFIG_KINETIS_QSPI_DMA
   .candma            = KINETIS_QSPI0_DMA,
   .rxintf            = XDMACH_QSPI_RX,
@@ -615,338 +581,6 @@ static inline uintptr_t qspi_regaddr(struct kinetis_qspidev_s *priv,
 #endif
 
 /****************************************************************************
- * Name: qspi_memory_enable
- *
- * Description:
- *   Enable the QSPI memory transfer
- *
- * Input Parameters:
- *   priv    - Device-specific state data
- *   meminfo - Describes the memory transfer to be performed.
- *
- * Returned Value:
- *   Zero (OK) on SUCCESS, a negated errno on value of failure
- *
- ****************************************************************************/
-
-static int qspi_memory_enable(struct kinetis_qspidev_s *priv,
-                              struct qspi_meminfo_s *meminfo)
-{
-  uint32_t regval;
-
-  /* Write the Instruction code register:
-   *
-   *  QSPI_ICR_INST(cmd)  8-bit command
-   *  QSPI_ICR_OPT(0)     No option
-   */
-
-  regval = QSPI_ICR_INST(meminfo->cmd) | QSPI_ICR_OPT(0);
-  qspi_putreg(priv, regval, SAM_QSPI_ICR_OFFSET);
-
-  /* Is memory data scrambled? */
-
-  if (QSPIMEM_ISSCRAMBLE(meminfo->flags))
-    {
-      /* Yes.. set the scramble key */
-
-      qspi_putreg(priv, meminfo->key, SAM_QSPI_SKR_OFFSET);
-
-      /* Enable the scrambler and enable/disable the random value in the
-       * key.
-       */
-
-      regval  = QSPI_SMR_SCREN;
-      if (!QSPIMEM_ISRANDOM(meminfo->flags))
-        {
-          /* Disable random value in key */
-
-          regval |= QSPI_SMR_RVDIS;
-        }
-
-      qspi_putreg(priv, 0, SAM_QSPI_SMR_OFFSET);
-    }
-  else
-    {
-      /* Disable the scrambler */
-
-      qspi_putreg(priv, 0, SAM_QSPI_SKR_OFFSET);
-      qspi_putreg(priv, 0, SAM_QSPI_SMR_OFFSET);
-    }
-
-  /* Write Instruction Frame Register:
-   *
-   *   QSPI_IFR_WIDTH_?         Instruction=single bit/Data depends on
-   *                              meminfo->flags
-   *   QSPI_IFR_INSTEN=1        Instruction Enable
-   *   QSPI_IFR_ADDREN=1        Address Enable
-   *   QSPI_IFR_OPTEN=0         Option Disable
-   *   QSPI_IFR_DATAEN=1        Data Enable
-   *   QSPI_IFR_OPTL_*          Not used (zero)
-   *   QSPI_IFR_ADDRL=0/1       Depends on meminfo->addrlen;
-   *   QSPI_IFR_TFRTYP_RD/WRMEM Depends on meminfo->flags
-   *   QSPI_IFR_CRM=0           Not continuous read
-   *   QSPI_IFR_NBDUM           Depends on meminfo->dummies
-   */
-
-  regval = QSPI_IFR_INSTEN | QSPI_IFR_ADDREN | QSPI_IFR_DATAEN |
-           QSPI_IFR_NBDUM(meminfo->dummies);
-
-  if (QSPIMEM_ISWRITE(meminfo->flags))
-    {
-      regval |= QSPI_IFR_TFRTYP_WRMEM | QSPI_IFR_WIDTH_SINGLE;
-    }
-  else
-    {
-      if (QSPIMEM_ISQUADIO(meminfo->flags))
-        {
-          regval |= QSPI_IFR_TFRTYP_RDMEM | QSPI_IFR_WIDTH_QUADIO;
-        }
-      else if (QSPIMEM_ISDUALIO(meminfo->flags))
-        {
-          regval |= QSPI_IFR_TFRTYP_RDMEM | QSPI_IFR_WIDTH_DUALIO;
-        }
-      else
-        {
-          regval |= QSPI_IFR_TFRTYP_RDMEM | QSPI_IFR_WIDTH_SINGLE;
-        }
-    }
-
-  if (meminfo->addrlen == 3)
-    {
-      regval |= QSPI_IFR_ADDRL_24BIT;
-    }
-  else if (meminfo->addrlen == 4)
-    {
-      regval |= QSPI_IFR_ADDRL_32BIT;
-    }
-  else
-    {
-      return -EINVAL;
-    }
-
-  /* Write the instruction frame value */
-
-  qspi_putreg(priv, regval, SAM_QSPI_IFR_OFFSET);
-  qspi_getreg(priv, SAM_QSPI_IFR_OFFSET);
-  return OK;
-}
-
-/****************************************************************************
- * Name: qspi_memory_dma
- *
- * Description:
- *   Perform one QSPI memory transfer using DMA
- *
- * Input Parameters:
- *   priv    - Device-specific state data
- *   meminfo - Describes the memory transfer to be performed.
- *
- * Returned Value:
- *   Zero (OK) on SUCCESS, a negated errno on value of failure
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-static int qspi_memory_dma(struct kinetis_qspidev_s *priv,
-                           struct qspi_meminfo_s *meminfo)
-{
-  uintptr_t qspimem = SAM_QSPIMEM_BASE + meminfo->addr;
-  uint32_t dmaflags;
-  int ret;
-
-  /* Initialize register sampling */
-
-  qspi_dma_sampleinit(priv);
-
-  /* Determine DMA flags and setup the DMA */
-
-  dmaflags = DMACH_FLAG_FIFOCFG_LARGEST | DMACH_FLAG_PERIPHAHB_AHB_IF1 |
-             DMACH_FLAG_PERIPHISMEMORY | DMACH_FLAG_PERIPHINCREMENT |
-             DMACH_FLAG_PERIPHCHUNKSIZE_1 | DMACH_FLAG_MEMPID_MAX |
-             DMACH_FLAG_MEMAHB_AHB_IF1 | DMACH_FLAG_MEMINCREMENT |
-             DMACH_FLAG_MEMCHUNKSIZE_1 | DMACH_FLAG_MEMBURST_16;
-
-  if (QSPIMEM_ISWRITE(meminfo->flags))
-    {
-      /* Configure TX DMA */
-
-      dmaflags |= ((uint32_t)priv->txintf << DMACH_FLAG_PERIPHPID_SHIFT) |
-                  DMACH_FLAG_PERIPHWIDTH_8BITS | DMACH_FLAG_MEMWIDTH_8BITS;
-      kinetis_dmaconfig(priv->dmach, dmaflags);
-
-      /* Setup the TX DMA (peripheral-to-memory) */
-
-      ret = kinetis_dmatxsetup(priv->dmach, qspimem, (uint32_t)meminfo->buffer,
-                           meminfo->buflen);
-    }
-  else
-    {
-      /* Configure RX DMA */
-
-      dmaflags |= ((uint32_t)priv->rxintf << DMACH_FLAG_PERIPHPID_SHIFT) |
-                  DMACH_FLAG_PERIPHWIDTH_32BITS | DMACH_FLAG_MEMWIDTH_32BITS;
-      kinetis_dmaconfig(priv->dmach, dmaflags);
-
-      /* Setup the RX DMA (memory-to-peripheral) */
-
-      ret = kinetis_dmarxsetup(priv->dmach, qspimem, (uint32_t)meminfo->buffer,
-                           meminfo->buflen);
-    }
-
-  if (ret < 0)
-    {
-      spierr("ERROR: DMA setup failed: %d\n", ret);
-      return ret;
-    }
-
-  qspi_dma_sample(priv, DMA_AFTER_SETUP);
-
-  /* Enable the memory transfer */
-
-  qspi_memory_enable(priv, meminfo);
-
-  /* Start the DMA */
-
-  priv->result = -EBUSY;
-  ret = kinetis_dmastart(priv->dmach, qspi_dma_callback, (void *)priv);
-  if (ret < 0)
-    {
-      spierr("ERROR: kinetis_dmastart failed: %d\n", ret);
-      return ret;
-    }
-
-  qspi_dma_sample(priv, DMA_AFTER_START);
-
-  /* Wait for DMA completion.  This is done in a loop because there may be
-   * false alarm semaphore counts that cause kinetis_wait() not fail to wait
-   * or to wake-up prematurely (for example due to the receipt of a signal).
-   * We know that the DMA has completed when the result is anything other
-   * that -EBUSY.
-   */
-
-  do
-    {
-      /* Start (or re-start) the watchdog timeout */
-
-      ret = wd_start(&priv->dmadog, DMA_TIMEOUT_TICKS,
-                     qspi_dma_timeout, (wdparm_t)priv);
-      if (ret < 0)
-        {
-           spierr("ERROR: wd_start failed: %d\n", ret);
-        }
-
-      /* Wait for the DMA complete */
-
-      ret = nxsem_wait_uninterruptible(&priv->dmawait);
-
-      /* Cancel the watchdog timeout */
-
-      wd_cancel(&priv->dmadog);
-
-      /* Check if we were awakened by an error of some kind. */
-
-      if (ret < 0)
-        {
-          DEBUGPANIC();
-          return ret;
-        }
-
-      /* Not that we might be awakened before the wait is over due to
-       * residual counts on the semaphore.  So, to handle, that case,
-       * we loop until something changes the DMA result to any value other
-       * than -EBUSY.
-       */
-    }
-  while (priv->result == -EBUSY);
-
-  /* Wait until the transmission registers are empty. */
-
-  while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_INT_TXEMPTY) == 0);
-  qspi_putreg(priv, QSPI_CR_LASTXFER, SAM_QSPI_CR_OFFSET);
-
-  while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_SR_INSTRE) == 0);
-  MEMORY_SYNC();
-
-  /* Dump the sampled DMA registers */
-
-  qspi_dma_sampledone(priv);
-
-  /* Make sure that the DMA is stopped (it will be stopped automatically
-   * on normal transfers, but not necessarily when the transfer terminates
-   * on an error condition).
-   */
-
-  kinetis_dmastop(priv->dmach);
-
-  /* Complain if the DMA fails */
-
-  if (priv->result)
-    {
-      spierr("ERROR: DMA failed with result: %d\n", priv->result);
-    }
-
-  return priv->result;
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_memory_nodma
- *
- * Description:
- *   Perform one QSPI memory transfer without using DMA
- *
- * Input Parameters:
- *   priv    - Device-specific state data
- *   meminfo - Describes the memory transfer to be performed.
- *
- * Returned Value:
- *   Zero (OK) on SUCCESS, a negated errno on value of failure
- *
- ****************************************************************************/
-
-static int qspi_memory_nodma(struct kinetis_qspidev_s *priv,
-                             struct qspi_meminfo_s *meminfo)
-{
-  uintptr_t qspimem = SAM_QSPIMEM_BASE + meminfo->addr;
-
-  /* Enable the memory transfer */
-
-  qspi_memory_enable(priv, meminfo);
-
-  /* Transfer data to/from QSPI memory */
-
-  if (QSPIMEM_ISWRITE(meminfo->flags))
-    {
-      qspi_memcpy((uint8_t *)qspimem, (const uint8_t *)meminfo->buffer,
-                  meminfo->buflen);
-    }
-  else
-    {
-      qspi_memcpy((uint8_t *)meminfo->buffer, (const uint8_t *)qspimem,
-                  meminfo->buflen);
-    }
-
-  MEMORY_SYNC();
-
-  /* Indicate the end of the transfer as soon as the transmission
-   * registers are empty.
-   */
-
-  while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_INT_TXEMPTY) == 0);
-  qspi_putreg(priv, QSPI_CR_LASTXFER, SAM_QSPI_CR_OFFSET);
-
-  /* Wait for the end of the transfer
-   *
-   * REVISIT:  If DMA is not used then large transfers could come through
-   * this path.  In that case, there would be a benefit to waiting for an
-   * interrupt to signal the end of the transfer.
-   */
-
-  while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_SR_INSTRE) == 0);
-  return OK;
-}
-
-/****************************************************************************
  * Name: qspi_memcpy
  *
  * Description:
@@ -995,7 +629,7 @@ static void qspi_memcpy(uint8_t *dest, const uint8_t *src, size_t buflen)
  *
  ****************************************************************************/
 
-static int qspi_lock(struct qspi_dev_s *dev, bool lock)
+static int qspi_lock(struct kqspi_dev_s *dev, bool lock)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
   int ret;
@@ -1028,17 +662,11 @@ static int qspi_lock(struct qspi_dev_s *dev, bool lock)
  *
  ****************************************************************************/
 
-static uint32_t qspi_setfrequency(struct qspi_dev_s *dev, uint32_t frequency)
+static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
   uint32_t actual;
   uint32_t scbr;
-#if CONFIG_KINETIS_QSPI_DLYBS > 0
-  uint32_t dlybs;
-#endif
-#if CONFIG_KINETIS_QSPI_DLYBCT > 0
-  uint32_t dlybct;
-#endif
   uint32_t regval;
 
   spiinfo("frequency=%d\n", frequency);
@@ -1084,49 +712,7 @@ static uint32_t qspi_setfrequency(struct qspi_dev_s *dev, uint32_t frequency)
   regval &= ~(QSPI_SCR_SCBR_MASK | QSPI_SCR_DLYBS_MASK);
   regval |= (scbr - 1) << QSPI_SCR_SCBR_SHIFT;
 
-  /* DLYBS: Delay Before QSCK.  This field defines the delay from NPCS valid
-   * to the first valid QSCK transition. When DLYBS equals zero, the NPCS
-   * valid to QSCK transition is 1/2 the QSCK clock period. Otherwise, the
-   * following equations determine the delay:
-   *
-   *   Delay Before QSCK = DLYBS / QSPI_CLK
-   *
-   * For a 100 nsec delay (assumes QSPI_CLK is an even multiple of MHz):
-   *
-   *   DLYBS == 100 * QSPI_CLK / 1000000000
-   *         == (100 * (QSPI_CLK / 1000000)) / 1000
-   */
-
-#if CONFIG_KINETIS_QSPI_DLYBS > 0
-  dlybs   = (CONFIG_KINETIS_QSPI_DLYBS * (SAM_QSPI_CLOCK / 1000000)) / 1000;
-  regval |= dlybs << QSPI_SCR_DLYBS_SHIFT;
-#endif
-
   qspi_putreg(priv, regval, SAM_QSPI_SCR_OFFSET);
-
-  /* DLYBCT: Delay Between Consecutive Transfers.  This field defines the
-   * delay between two consecutive transfers with the same peripheral without
-   * removing the chip select. The delay is always inserted after each
-   * transfer and before removing the chip select if needed.
-   *
-   *  Delay Between Consecutive Transfers = (32 x DLYBCT) / QSPI_CLK
-   *
-   * For a 500 nsec delay  (assumes QSPI_CLK is an even multiple of MHz):
-   *
-   *  DLYBCT = 500 * QSPI_CLK / 1000000000 / 32
-   *         = (500 * (QSPI_CLK / 1000000) / 1000 / 32
-   */
-
-  regval  = qspi_getreg(priv, SAM_QSPI_MR_OFFSET);
-  regval &= ~QSPI_MR_DLYBCT_MASK;
-
-#if CONFIG_KINETIS_QSPI_DLYBCT > 0
-  dlybct  = ((CONFIG_KINETIS_QSPI_DLYBCT * (SAM_QSPI_CLOCK / 1000000))
-              / 1000 / 32);
-  regval |= dlybct << QSPI_MR_DLYBCT_SHIFT;
-#endif
-
-  qspi_putreg(priv, regval, SAM_QSPI_MR_OFFSET);
 
   /* Calculate the new actual frequency */
 
@@ -1140,121 +726,6 @@ static uint32_t qspi_setfrequency(struct qspi_dev_s *dev, uint32_t frequency)
 
   spiinfo("Frequency %d->%d\n", frequency, actual);
   return actual;
-}
-
-/****************************************************************************
- * Name: qspi_setmode
- *
- * Description:
- *   Set the QSPI mode. Optional.  See enum qspi_mode_e for mode definitions
- *
- * Input Parameters:
- *   dev -  Device-specific state data
- *   mode - The QSPI mode requested
- *
- * Returned Value:
- *   none
- *
- ****************************************************************************/
-
-static void qspi_setmode(struct qspi_dev_s *dev, enum qspi_mode_e mode)
-{
-  struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
-  uint32_t regval;
-
-  spiinfo("mode=%d\n", mode);
-
-  /* Has the mode changed? */
-
-  if (mode != priv->mode)
-    {
-      /* Yes... Set the mode appropriately:
-       *
-       * QSPI  CPOL CPHA
-       * MODE
-       *  0    0    0
-       *  1    0    1
-       *  2    1    0
-       *  3    1    1
-       */
-
-      regval  = qspi_getreg(priv, SAM_QSPI_SCR_OFFSET);
-      regval &= ~(QSPI_SCR_CPOL | QSPI_SCR_CPHA);
-
-      switch (mode)
-        {
-        case QSPIDEV_MODE0: /* CPOL=0; CPHA=0 */
-          break;
-
-        case QSPIDEV_MODE1: /* CPOL=0; CPHA=1 */
-          regval |= QSPI_SCR_CPHA;
-          break;
-
-        case QSPIDEV_MODE2: /* CPOL=1; CPHA=0 */
-          regval |= QSPI_SCR_CPOL;
-          break;
-
-        case QSPIDEV_MODE3: /* CPOL=1; CPHA=1 */
-          regval |= (QSPI_SCR_CPOL | QSPI_SCR_CPHA);
-          break;
-
-        default:
-          DEBUGASSERT(FALSE);
-          return;
-        }
-
-      qspi_putreg(priv, regval, SAM_QSPI_SCR_OFFSET);
-      spiinfo("SCR=%08x\n", regval);
-
-      /* Save the mode so that subsequent re-configurations will be faster */
-
-      priv->mode = mode;
-    }
-}
-
-/****************************************************************************
- * Name: qspi_setbits
- *
- * Description:
- *   Set the number if bits per word.
- *
- * Input Parameters:
- *   dev -  Device-specific state data
- *   nbits - The number of bits requests
- *
- * Returned Value:
- *   none
- *
- ****************************************************************************/
-
-static void qspi_setbits(struct qspi_dev_s *dev, int nbits)
-{
-  struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
-  uint32_t regval;
-
-  spiinfo("nbits=%d\n", nbits);
-  DEBUGASSERT(priv != NULL);
-  DEBUGASSERT(nbits >= SAM_QSPI_MINBITS && nbits <= SAM_QSPI_MAXBITS);
-
-  /* Has the number of bits changed? */
-
-  if (nbits != priv->nbits)
-    {
-      /* Yes... Set number of bits appropriately */
-
-      regval  = qspi_getreg(priv, SAM_QSPI_MR_OFFSET);
-      regval &= ~QSPI_MR_NBBITS_MASK;
-      regval |= QSPI_MR_NBBITS(nbits);
-      qspi_putreg(priv, regval, SAM_QSPI_MR_OFFSET);
-
-      spiinfo("MR=%08x\n", regval);
-
-      /* Save the selection so the subsequence re-configurations will be
-       * faster
-       */
-
-      priv->nbits = nbits;
-    }
 }
 
 /****************************************************************************
@@ -1272,8 +743,8 @@ static void qspi_setbits(struct qspi_dev_s *dev, int nbits)
  *
  ****************************************************************************/
 
-static int qspi_command(struct qspi_dev_s *dev,
-                        struct qspi_cmdinfo_s *cmdinfo)
+static int qspi_command(struct kqspi_dev_s *dev,
+                        struct kqspi_cmdinfo_s *cmdinfo)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
   uint32_t regval;
@@ -1282,14 +753,14 @@ static int qspi_command(struct qspi_dev_s *dev,
   DEBUGASSERT(priv != NULL && cmdinfo != NULL);
 
 #ifdef CONFIG_DEBUG_SPI_INFO
-  spiinfo("Transfer:\n");
+  spiinfo("Transfer %s:\n", QSPICMD_ISIP(cmdinfo->flags)?"IP":"AHB");
   spiinfo("  flags: %02x\n", cmdinfo->flags);
-  spiinfo("  cmd: %04x\n", cmdinfo->cmd);
+  spiinfo("  lut: %04x\n", cmdinfo->lutindex);
 
   if (QSPICMD_ISADDRESS(cmdinfo->flags))
     {
-      spiinfo("  address/length: %08lx/%d\n",
-              (unsigned long)cmdinfo->addr, cmdinfo->addrlen);
+      spiinfo("  address: %08lx\n",
+              (unsigned long)cmdinfo->addr);
     }
 
   if (QSPICMD_ISDATA(cmdinfo->flags))
@@ -1486,8 +957,8 @@ static int qspi_command(struct qspi_dev_s *dev,
  *
  ****************************************************************************/
 
-static int qspi_memory(struct qspi_dev_s *dev,
-                       struct qspi_meminfo_s *meminfo)
+static int qspi_memory(struct kqspi_dev_s *dev,
+                       struct kqspi_config_s *config)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
 
@@ -1535,7 +1006,7 @@ static int qspi_memory(struct qspi_dev_s *dev,
  *
  ****************************************************************************/
 
-static FAR void *qspi_alloc(FAR struct qspi_dev_s *dev, size_t buflen)
+static FAR void *qspi_alloc(FAR struct kqspi_dev_s *dev, size_t buflen)
 {
   /* Here we exploit the internal knowledge the kmm_malloc() will return
    * memory aligned to 64-bit addresses.  The buffer length must be large
@@ -1560,7 +1031,7 @@ static FAR void *qspi_alloc(FAR struct qspi_dev_s *dev, size_t buflen)
  *
  ****************************************************************************/
 
-static void qspi_free(FAR struct qspi_dev_s *dev, FAR void *buffer)
+static void qspi_free(FAR struct kqspi_dev_s *dev, FAR void *buffer)
 {
   if (buffer)
     {
@@ -1661,7 +1132,7 @@ static int qspi_hw_initialize(struct kinetis_qspidev_s *priv)
  *
  ****************************************************************************/
 
-struct qspi_dev_s *kinetis_qspi_initialize(int intf)
+struct kqspi_dev_s *kinetis_qspi_initialize(int intf)
 {
   struct kinetis_qspidev_s *priv;
   int ret;
@@ -1738,17 +1209,6 @@ struct qspi_dev_s *kinetis_qspi_initialize(int intf)
       nxsem_set_protocol(&priv->dmawait, SEM_PRIO_NONE);
 #endif
 
-#ifdef QSPI_USE_INTERRUPTS
-      /* Attach the interrupt handler */
-
-      ret = irq_attach(priv->irq, priv->handler, NULL);
-      if (ret < 0)
-        {
-          spierr("ERROR: Failed to attach irq %d\n", priv->irq);
-          goto errout_with_dmawait;
-        }
-#endif
-
       /* Perform hardware initialization.  Puts the QSPI into an active
        * state.
        */
@@ -1757,25 +1217,17 @@ struct qspi_dev_s *kinetis_qspi_initialize(int intf)
       if (ret < 0)
         {
           spierr("ERROR: Failed to initialize QSPI hardware\n");
-          goto errout_with_irq;
+          goto errout;
         }
 
       /* Enable interrupts at the NVIC */
 
       priv->initialized = true;
-#ifdef QSPI_USE_INTERRUPTS
-      up_enable_irq(priv->irq);
-#endif
     }
 
   return &priv->qspi;
 
-errout_with_irq:
-#ifdef QSPI_USE_INTERRUPTS
-  irq_detach(priv->irq);
-
-errout_with_dmawait:
-#endif
+errout:
 #ifdef CONFIG_KINETIS_QSPI_DMA
   nxsem_destroy(&priv->dmawait);
   if (priv->dmach)

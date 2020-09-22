@@ -78,10 +78,10 @@
 #define QSPI_SETFREQUENCY(d,f) ((d)->ops->setfrequency(d,f))
 
 /****************************************************************************
- * Name: QSPI_SETFLASHCONFIG
+ * Name: QSPI_CONFIG
  *
  * Description:
- *   Set a QSPI flashconfig. Optional.
+ *   Set a QSPI config.
  *
  * Input Parameters:
  *   dev -  Device-specific state data
@@ -92,17 +92,17 @@
  *
  ****************************************************************************/
 
-#define QSPI_SETFLASHCONFIG(d,c) (d)->ops->setflashconfig(d,c)
+#define QSPI_SETCONFIG(d,c) (d)->ops->setconfig(d,c)
 
 /****************************************************************************
  * Name: QSPI_SETLUT
  *
  * Description:
- *   Set a QSPI lookuptable. Optional.
+ *   Set a QSPI lookuptable.
  *
  * Input Parameters:
  *   dev -  Device-specific state data
- *   lut - Flash-specific config
+ *   lut - Flash-specific command table
  *
  * Returned Value:
  *   none
@@ -127,6 +127,20 @@
  ****************************************************************************/
 
 #define QSPI_COMMAND(d,c) (d)->ops->command(d,c)
+
+/* QSPI Command Transfer Flags */
+
+#define QSPICMD_IPCMD         (1 << 0)  /* Bit 0: IP command else AHB */
+#define QSPICMD_READDATA      (1 << 1)  /* Bit 1: Enable read data transfer */
+#define QSPICMD_WRITEDATA     (1 << 2)  /* Bit 2: Enable write data transfer */
+#define QSPICMD_ADDRESS       (1 << 0)  /* Bit 3: Enable address transfer */
+
+#define QSPICMD_ISIPCMD(f)    (((f) & QSPICMD_IPCMD) != 0)
+#define QSPICMD_ISDATA(f)     (((f) & (QSPICMD_READDATA \
+                                     | QSPICMD_WRITEDATA)) != 0)
+#define QSPICMD_ISREAD(f)     (((f) & QSPICMD_READDATA) != 0)
+#define QSPICMD_ISWRITE(f)    (((f) & QSPICMD_WRITEDATA) != 0)
+#define QSPICMD_ISADDRESS(f)  (((f) & QSPICMD_ADDRESS) != 0)
 
 /****************************************************************************
  * Name: QSPI_MEMORY
@@ -189,39 +203,16 @@
 struct kqspi_cmdinfo_s
 {
   uint8_t   flags;       /* See QSPICMD_* definitions */
-  uint8_t   addrlen;     /* Address length in bytes (if QSPICMD_ADDRESS) */
-  uint16_t  cmd;         /* Command */
+  uint8_t   lutindex;    /* Command index in lookup table */
   uint16_t  buflen;      /* Data buffer length in bytes (if QSPICMD_DATA) */
   uint32_t  addr;        /* Address (if QSPICMD_ADDRESS) */
   FAR void *buffer;      /* Data buffer (if QSPICMD_DATA) */
 };
 
-/* This structure describes one memory transfer */
-
-struct kqspi_meminfo_s
-{
-  uint8_t   flags;       /* See QSPMEM_* definitions */
-  uint8_t   addrlen;     /* Address length in bytes */
-  uint8_t   dummies;     /* Number of dummy read cycles (READ only) */
-  uint16_t  buflen;      /* Data buffer length in bytes */
-  uint16_t  cmd;         /* Memory access command */
-  uint32_t  addr;        /* Memory Address */
-  uint32_t  key;         /* Scrambler key */
-  FAR void *buffer;      /* Data buffer */
-};
-
 /* This structure describes a flashconfig */
 
-struct kqspi_flashconfig_s
+struct kqspi_config_s
 {
-  uint8_t   flags;       /* See QSPMEM_* definitions */
-  uint8_t   addrlen;     /* Address length in bytes */
-  uint8_t   dummies;     /* Number of dummy read cycles (READ only) */
-  uint16_t  buflen;      /* Data buffer length in bytes */
-  uint16_t  cmd;         /* Memory access command */
-  uint32_t  addr;        /* Memory Address */
-  uint32_t  key;         /* Scrambler key */
-  FAR void *buffer;      /* Data buffer */
 };
 
 /* The QSPI vtable */
@@ -229,18 +220,16 @@ struct kqspi_flashconfig_s
 struct kqspi_dev_s;
 struct kqspi_ops_s
 {
-  CODE int       (*lock)(FAR struct qspi_dev_s *dev, bool lock);
-  CODE uint32_t  (*setfrequency)(FAR struct qspi_dev_s *dev,
+  CODE int       (*lock)(FAR struct kqspi_dev_s *dev, bool lock);
+  CODE uint32_t  (*setfrequency)(FAR struct kqspi_dev_s *dev,
                     uint32_t frequency);
-  CODE int       (*command)(FAR struct qspi_dev_s *dev,
-                    FAR struct qspi_cmdinfo_s *cmdinfo);
-  CODE int       (*memory)(FAR struct qspi_dev_s *dev,
-                    FAR struct qspi_meminfo_s *meminfo);
-  CODE FAR void *(*alloc)(FAR struct qspi_dev_s *dev, size_t buflen);
-  CODE void      (*free)(FAR struct qspi_dev_s *dev, FAR void *buffer);
-  CODE int       (*setflashconfig)(FAR struct qspi_dev_s *dev,
-                    FAR struct kqspi_flashconfig_s *conf);
-  CODE void      (*setlut)(FAR struct qspi_dev_s *dev, FAR uint32_t *lut);
+  CODE int       (*command)(FAR struct kqspi_dev_s *dev,
+                    FAR struct kqspi_cmdinfo_s *cmdinfo);
+  CODE FAR void *(*alloc)(FAR struct kqspi_dev_s *dev, size_t buflen);
+  CODE void      (*free)(FAR struct kqspi_dev_s *dev, FAR void *buffer);
+  CODE void      (*setconfig)(FAR struct kqspi_dev_s *dev,
+                    FAR struct kqspi_config_s *conf);
+  CODE void      (*setlut)(FAR struct kqspi_dev_s *dev, FAR uint32_t *lut);
 };
 
 /* QSPI private data.  This structure only defines the initial fields of the
