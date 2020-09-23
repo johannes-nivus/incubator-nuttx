@@ -64,7 +64,7 @@
  * a value between 1 and 255
  */
 
-#define SAM_QSPI_CLOCK    BOARD_MCK_FREQUENCY  /* Frequency of the main clock */
+#define KINETIS_QSPI_CLOCK    QSPI_CLOCK_FREQ  /* Frequency of the main clock */
 
 /* DMA timeout.  The value is not critical; we just don't want the system to
  * hang in the event that a DMA does not finish.  This is set to
@@ -85,6 +85,75 @@
 #define ALIGN_MASK        3
 #define ALIGN_UP(n)       (((n)+ALIGN_MASK) & ~ALIGN_MASK)
 #define IS_ALIGNED(n)     (((uint32_t)(n) & ALIGN_MASK) == 0)
+
+/* QSPI "inline" functions **************************************************/
+
+/* Wait while interface busy */
+
+#define QSPI_WAIT_BUSY(p,r) \
+  do \
+    { \
+      r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+    } \
+  while ((r & QSPI_SR_BUSY) != 0);
+
+/* Wait for TX FIFO not full */
+
+#define QSPI_WAIT_TXFIFO(p,r) \
+  do \
+    { \
+      r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+    } \
+  while ((r & QSPI_SR_TXFULL) != 0);
+
+/* Clear TX FIFO */
+
+#define QSPI_CLEAR_TXFIFO(p,r) \
+  do \
+    { \
+      r  = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
+      r |= QSPI_MCR_CLR_TXF; \
+      qspi_putreg(p, r, KINETIS_QSPI_MCR_OFFSET); \
+    } \
+  while (0);
+
+/* Clear RX FIFO */
+
+#define QSPI_CLEAR_RXFIFO(p,r) \
+  do \
+    { \
+      r  = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
+      r |= QSPI_MCR_CLR_RXF; \
+      qspi_putreg(p, r, KINETIS_QSPI_MCR_OFFSET); \
+    } \
+  while (0);
+
+/* Execute IP command */
+
+#define QSPI_EXECUTE_IPCOMMAND(p,l,r) \
+  do \
+    { \
+      qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_IPPTRC); \
+      r  = qspi_getreg(p, KINETIS_QSPI_IPCR_OFFSET); \
+      r &= ~(QSPI_IPCR_SEQID_MASK); \
+      r |= QSPI_IPCR_SEQID(l); \
+      qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
+    } \
+  while (0);
+
+/* Execute AHB command */
+
+#define QSPI_EXECUTE_AHBCOMMAND(p,l,r) \
+  do \
+    { \
+      qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_BFPTRC); \
+      r  = qspi_getreg(p, KINETIS_QSPI_BFGENCR_OFFSET); \
+      r &= ~(QSPI_IPCR_SEQID_MASK); \
+      r |= QSPI_IPCR_SEQID(l); \
+      qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
+    } \
+  while (0);
+
 
 /* Debug ********************************************************************/
 
@@ -616,7 +685,7 @@ static void qspi_memcpy(uint8_t *dest, const uint8_t *src, size_t buflen)
  *   lock QSPI to have exclusive access to the buses for a sequence of
  *   transfers.  The bus should be locked before the chip is selected. After
  *   locking the QSPI bus, the caller should then also call the setfrequency,
- *   setbits, and setmode methods to make sure that the QSPI is properly
+ *   setconfig, and setlut methods to make sure that the QSPI is properly
  *   configured for the device.  If the QSPI bus is being shared, then it
  *   may have been left in an incompatible state.
  *
@@ -666,7 +735,7 @@ static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
   uint32_t actual;
-  uint32_t scbr;
+  uint32_t sclkcfg;
   uint32_t regval;
 
   spiinfo("frequency=%d\n", frequency);
@@ -686,38 +755,38 @@ static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
   /* Configure QSPI to a frequency as close as possible to the requested
    * frequency.
    *
-   *   QSCK frequency = QSPI_CLK / SCBR, or SCBR = QSPI_CLK / frequency
+   *   QSCK frequency = QSPI_CLK / SCLKCFG, or SCLKCFG = QSPI_CLK / frequency
    *
-   * Where SCBR can have the range 1 to 256 and the SCR register field holds
-   * SCBR - 1.  NOTE that a "ceiling" type of calculation is performed.
+   * Where SCLKCFG can have the range 1 to 256 and the MCR register field holds
+   * SCLKCFG - 1.  NOTE that a "ceiling" type of calculation is performed.
    * 'frequency' is treated as a not-to-exceed value.
    */
 
-  scbr = (frequency + SAM_QSPI_CLOCK - 1) / frequency;
+  sclkcfg = (frequency + KINETIS_QSPI_CLOCK - 1) / frequency;
 
   /* Make sure that the divider is within range */
 
-  if (scbr < 1)
+  if (sclkcfg < 1)
     {
-      scbr = 1;
+      sclkcfg = 1;
     }
-  else if (scbr > 256)
+  else if (sclkcfg > 16)
     {
-      scbr = 256;
+      sclkcfg = 16;
     }
 
   /* Save the new SCBR value (minus one) */
 
-  regval  = qspi_getreg(priv, SAM_QSPI_SCR_OFFSET);
-  regval &= ~(QSPI_SCR_SCBR_MASK | QSPI_SCR_DLYBS_MASK);
-  regval |= (scbr - 1) << QSPI_SCR_SCBR_SHIFT;
+  regval  = qspi_getreg(priv, KINETIS_QSPI_MCR_OFFSET);
+  regval &= ~(QSPI_MCR_SCLKCFG_MASK);
+  regval |= (sclkcfg - 1) << QSPI_MCR_SCLKCFG_SHIFT;
 
-  qspi_putreg(priv, regval, SAM_QSPI_SCR_OFFSET);
+  qspi_putreg(priv, regval, KINETIS_QSPI_MCR_OFFSET);
 
   /* Calculate the new actual frequency */
 
-  actual = SAM_QSPI_CLOCK / scbr;
-  spiinfo("SCBR=%d actual=%d\n", scbr, actual);
+  actual = KINETIS_QSPI_CLOCK / sclkcfg;
+  spiinfo("SCBR=%d actual=%d\n", sclkcfg, actual);
 
   /* Save the frequency setting */
 
@@ -747,15 +816,17 @@ static int qspi_command(struct kqspi_dev_s *dev,
                         struct kqspi_cmdinfo_s *cmdinfo)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
-  uint32_t regval;
-  uint32_t ifr;
+  uint32_t  regval;
+  uint16_t  buftrans32 = 0;
+  uint16_t  buflen32 = 0;
+  uint32_t *buf32 = NULL;
 
   DEBUGASSERT(priv != NULL && cmdinfo != NULL);
 
 #ifdef CONFIG_DEBUG_SPI_INFO
-  spiinfo("Transfer %s:\n", QSPICMD_ISIP(cmdinfo->flags)?"IP":"AHB");
+  spiinfo("Transfer %s:\n", QSPICMD_ISIPCMD(cmdinfo->flags) ? "IP" : "AHB");
   spiinfo("  flags: %02x\n", cmdinfo->flags);
-  spiinfo("  lut: %04x\n", cmdinfo->lutindex);
+  spiinfo("  lut: %04x\n", cmdinfo->cmdindex);
 
   if (QSPICMD_ISADDRESS(cmdinfo->flags))
     {
@@ -772,222 +843,85 @@ static int qspi_command(struct kqspi_dev_s *dev,
     }
 #endif
 
-  DEBUGASSERT(cmdinfo->cmd < 256);
+  DEBUGASSERT(cmdinfo->cmdindex < 16);
+
+  QSPI_WAIT_BUSY(priv, regval);
 
   /* Write the instruction address register */
 
-  ifr = 0;
   if (QSPICMD_ISADDRESS(cmdinfo->flags))
     {
-      DEBUGASSERT(cmdinfo->addrlen == 3 || cmdinfo->addrlen == 4);
 
-      /* Set the address in the IAR.  This is required only if the
-       * instruction frame includes an address, but no data.  When data is
-       * preset, the address of the instruction is determined by the address
-       * of QSPI memory accesses, and not by the content of the IAR.
-       */
+      /* Set the address in the SFAR. */
 
-      qspi_putreg(priv, cmdinfo->addr, SAM_QSPI_IAR_OFFSET);
+      qspi_putreg(priv, cmdinfo->addr, KINETIS_QSPI_SFAR_OFFSET);
 
-      /* Set/clear the address enable bit and the address size in the IFR */
-
-      ifr |= QSPI_IFR_ADDREN;
-
-      if (cmdinfo->addrlen == 3)
-        {
-          ifr |= QSPI_IFR_ADDRL_24BIT;
-        }
-      else if (cmdinfo->addrlen == 4)
-        {
-          ifr |= QSPI_IFR_ADDRL_32BIT;
-        }
-      else
-        {
-          return -EINVAL;
-        }
     }
 
-  /* Write the Instruction code register:
-   *
-   *  QSPI_ICR_INST(cmd)  8-bit command
-   *  QSPI_ICR_OPT(0)     No option
-   */
-
-  regval =  QSPI_ICR_INST(cmdinfo->cmd) | QSPI_ICR_OPT(0);
-  qspi_putreg(priv, regval, SAM_QSPI_ICR_OFFSET);
-
-  /* Does data accompany the command? */
+  /* Does the command include a write? */
 
   if (QSPICMD_ISDATA(cmdinfo->flags))
     {
-      DEBUGASSERT(cmdinfo->buffer != NULL && cmdinfo->buflen > 0);
-      DEBUGASSERT(IS_ALIGNED(cmdinfo->buffer));
-
-      /* Write Instruction Frame Register:
-       *
-       *   QSPI_IFR_WIDTH_SINGLE  Instruction=single bit/Data single bit
-       *   QSPI_IFR_INSTEN=1      Instruction Enable
-       *   QSPI_IFR_ADDREN=?      (See logic above)
-       *   QSPI_IFR_OPTEN=0       Option Disable
-       *   QSPI_IFR_DATAEN=1      Data Enable
-       *   QSPI_IFR_OPTL_*        Not used (zero)
-       *   QSPI_IFR_ADDRL=0       Not used (zero)
-       *   QSPI_IFR_TFRTYP_WRITE  Write transfer into serial memory, OR
-       *   QSPI_IFR_TFRTYP_READ   Read transfer from serial memory
-       *   QSPI_IFR_CRM=0         Not continuous read
-       *   QSPI_IFR_NBDUM(0)      No dummy cycles
-       */
-
-      ifr |= QSPI_IFR_WIDTH_SINGLE | QSPI_IFR_INSTEN | QSPI_IFR_DATAEN |
-             QSPI_IFR_NBDUM(0);
-
-      /* Read or write operation? */
-
       if (QSPICMD_ISWRITE(cmdinfo->flags))
         {
-          /* Set write data operation
-           *
-           * Write the IFR to the hardware.  If the instructrion frame
-           * includes data, writing to the IFR does not trigger the
-           * instruction frame transfer.  Rather, the instruction frame
-           * is triggered by the first access to QSPI memory.
-           */
+          DEBUGASSERT(cmdinfo->buffer != NULL &&
+                      IS_ALIGNED(cmdinfo->buffer) &&
+                      cmdinfo->buflen > 0);
 
-          ifr |= QSPI_IFR_TFRTYP_WRITE;
-          qspi_putreg(priv, ifr, SAM_QSPI_IFR_OFFSET);
+          buf32      = cmdinfo->buffer;
+          buflen32   = ALIGN_UP(cmdinfo->buflen) >> 2;
+          buftrans32 = 0;
 
-          /* Read QSPI_IFR (dummy read) to synchronize APB and AHB
-           * accesses.
-           */
+          /* Clear the TX FIFO. */
 
-          qspi_getreg(priv, SAM_QSPI_IFR_OFFSET);
+          QSPI_CLEAR_TXFIFO(priv, regval);
 
-          /* Copy the data to write to QSPI_RAM */
+          /* Execute Write Enable command. */
 
-          qspi_memcpy((uint8_t *)SAM_QSPIMEM_BASE,
-                      (const uint8_t *)cmdinfo->buffer, cmdinfo->buflen);
+          if (cmdinfo->wrenindex != QSPICMD_INVALID_WREN)
+            {
+              DEBUGASSERT(cmdinfo->wrenindex < 16);
+
+              QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->wrenindex, regval);
+            }
+
+          /* Fill the Fifo to prevent underrun before exec. the command. */
+
+          while (buftrans32 < buflen32 && buftrans32 < KINETIS_QSPI_TXFIFO_SIZE32)
+            {
+              QSPI_WAIT_TXFIFO(priv, regval);
+              qspi_putreg(priv, buf32[buftrans32], KINETIS_QSPI_TBDR_OFFSET);
+            }
         }
       else
         {
-          /* Set read data operation
-           *
-           * Write the IFR to the hardware.  If the instructrion frame
-           * includes data, writing to the IFR does not trigger the
-           * instruction frame transfer.  Rather, the instruction frame
-           * is triggered by the first access to QSPI memory.
-           */
+          DEBUGASSERT(cmdinfo->buffer != NULL &&
+                      IS_ALIGNED(cmdinfo->buffer) &&
+                      cmdinfo->buflen > 0);
 
-          ifr |= QSPI_IFR_TFRTYP_READ;
-          qspi_putreg(priv, ifr, SAM_QSPI_IFR_OFFSET);
+          buf32      = cmdinfo->buffer;
+          buflen32   = ALIGN_UP(cmdinfo->buflen) >> 2;
+          buftrans32 = 0;
 
-          /* Read QSPI_IFR (dummy read) to synchronize APB and AHB
-           * accesses.
-           */
+          /* Clear the RX FIFO. */
 
-          qspi_getreg(priv, SAM_QSPI_IFR_OFFSET);
-
-          /* Copy the data from QSPI memory into the user buffer */
-
-          qspi_memcpy((uint8_t *)cmdinfo->buffer,
-                      (const uint8_t *)SAM_QSPIMEM_BASE, cmdinfo->buflen);
+          QSPI_CLEAR_RXFIFO(priv, regval);
         }
 
-      MEMORY_SYNC();
+      if (QSPICMD_ISIPCMD(cmdinfo->flags))
+        {
+          regval = QSPI_IPCR_SEQID(cmdinfo->cmdindex) | QSPI_IPCR_IDATSZ(cmdinfo->buflen);
+          qspi_putreg(priv, regval, KINETIS_QSPI_IPCR_OFFSET);
+        }
+      else
+        {
+          regval = QSPI_BFGENCR_SEQID(cmdinfo->cmdindex) | QSPI_BFGENCR_(cmdinfo->buflen);
+          qspi_putreg(priv, regval, KINETIS_QSPI_IPCR_OFFSET);
+        }
 
-      /* Indicate the end of the transfer as soon as the transmission
-       * registers are empty.
-       */
-
-      while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_INT_TXEMPTY)
-             == 0);
-
-      qspi_putreg(priv, QSPI_CR_LASTXFER, SAM_QSPI_CR_OFFSET);
-
-      /* Fall through to INSTRE wait */
     }
-  else
-    {
-      /* Write Instruction Frame Register:
-       *
-       *   QSPI_IFR_WIDTH_SINGLE  Instruction=single bit/Data single bit
-       *   QSPI_IFR_INSTEN=1      Instruction Enable
-       *   QSPI_IFR_ADDREN=?      (See logic above)
-       *   QSPI_IFR_OPTEN=0       Option Disable
-       *   QSPI_IFR_DATAEN=0      Data Disable
-       *   QSPI_IFR_OPTL_*        Not used (zero)
-       *   QSPI_IFR_ADDRL=0       Not used (zero)
-       *   QSPI_IFR_TFRTYP_READ   Shouldn't matter
-       *   QSPI_IFR_CRM=0         Not continuous read
-       *   QSPI_IFR_NBDUM(0)      No dummy cycles
-       */
-
-      ifr |= QSPI_IFR_WIDTH_SINGLE | QSPI_IFR_INSTEN | QSPI_IFR_TFRTYP_READ |
-             QSPI_IFR_NBDUM(0);
-      qspi_putreg(priv, ifr, SAM_QSPI_IFR_OFFSET);
-
-      MEMORY_SYNC();
-
-      /* If the insruction frame does not include data, writing to the IFR
-       * triggers sending of the instruction frame. Fall through to INSTRE
-       * wait.
-       */
-    }
-
-  /* When the command has been sent, Instruction End Status (INTRE) will be
-   * set in the QSPI status register.
-   */
-
-  while ((qspi_getreg(priv, SAM_QSPI_SR_OFFSET) & QSPI_SR_INSTRE) == 0);
 
   return OK;
-}
-
-/****************************************************************************
- * Name: qspi_memory
- *
- * Description:
- *   Perform one QSPI memory transfer
- *
- * Input Parameters:
- *   dev     - Device-specific state data
- *   meminfo - Describes the memory transfer to be performed.
- *
- * Returned Value:
- *   Zero (OK) on SUCCESS, a negated errno on value of failure
- *
- ****************************************************************************/
-
-static int qspi_memory(struct kqspi_dev_s *dev,
-                       struct kqspi_config_s *config)
-{
-  struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
-
-  DEBUGASSERT(priv != NULL && meminfo != NULL);
-
-  spiinfo("Transfer:\n");
-  spiinfo("  flags: %02x\n", meminfo->flags);
-  spiinfo("  cmd: %04x\n", meminfo->cmd);
-  spiinfo("  address/length: %08lx/%d\n",
-         (unsigned long)meminfo->addr, meminfo->addrlen);
-  spiinfo("  %s Data:\n",
-          QSPIMEM_ISWRITE(meminfo->flags) ? "Write" : "Read");
-  spiinfo("    buffer/length: %p/%d\n", meminfo->buffer, meminfo->buflen);
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-  /* Can we perform DMA?  Should we perform DMA? */
-
-  if (priv->candma &&
-      meminfo->buflen > CONFIG_KINETIS_QSPI_DMATHRESHOLD &&
-      IS_ALIGNED((uintptr_t)meminfo->buffer) &&
-      IS_ALIGNED(meminfo->buflen))
-    {
-      return qspi_memory_dma(priv, meminfo);
-    }
-  else
-#endif
-    {
-      return qspi_memory_nodma(priv, meminfo);
-    }
 }
 
 /****************************************************************************

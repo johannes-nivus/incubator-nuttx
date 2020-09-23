@@ -142,6 +142,10 @@
 #define QSPICMD_ISWRITE(f)    (((f) & QSPICMD_WRITEDATA) != 0)
 #define QSPICMD_ISADDRESS(f)  (((f) & QSPICMD_ADDRESS) != 0)
 
+/* QSPI Command Write Enable */
+
+#define QSPICMD_INVALID_WREN  255
+
 /****************************************************************************
  * Name: QSPI_MEMORY
  *
@@ -202,11 +206,12 @@
 
 struct kqspi_cmdinfo_s
 {
-  uint8_t   flags;       /* See QSPICMD_* definitions */
-  uint8_t   lutindex;    /* Command index in lookup table */
-  uint16_t  buflen;      /* Data buffer length in bytes (if QSPICMD_DATA) */
-  uint32_t  addr;        /* Address (if QSPICMD_ADDRESS) */
-  FAR void *buffer;      /* Data buffer (if QSPICMD_DATA) */
+  uint8_t    flags;       /* See QSPICMD_* definitions */
+  uint8_t    cmdindex;    /* Command index in lookup table */
+  uint8_t    wrenindex;   /* Command index in lookup table */
+  uint16_t   buflen;      /* Data buffer length in bytes (if QSPICMD_DATA) */
+  uint32_t   addr;        /* Address (if QSPICMD_ADDRESS) */
+  FAR void  *buffer;      /* Data buffer (if QSPICMD_DATA) */
 };
 
 /* This structure describes a flashconfig */

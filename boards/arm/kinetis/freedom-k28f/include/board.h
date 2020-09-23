@@ -147,6 +147,11 @@
 #define BOARD_TPM_CLKSRC     SIM_SOPT2_TPMSRC_MCGCLK
 #define BOARD_TPM_FREQ       BOARD_SIM_CLKDIV3_FREQ
 
+/* QSPI clocking ****************************************************************/
+
+#define QSPI_CLOCK_FREQ  BOARD_CORECLK_FREQ
+#define QSPI_CLOCK_SOCCR 0
+
 /* SDHC clocking ****************************************************************/
 
 /* SDCLK configurations corresponding to various modes of operation.

@@ -34,6 +34,8 @@
  * Pre-processor Definitions
  ****************************************************************************************************/
 
+#define KINETIS_QSPI_TXFIFO_SIZE32   16
+
 /* Register Offsets *********************************************************************************/
 
 #define KINETIS_QSPI_MCR_OFFSET      0x0000 /* Module Configuration Register */
