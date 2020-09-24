@@ -130,26 +130,26 @@
 
 /* Execute IP command */
 
-#define QSPI_EXECUTE_IPCOMMAND(p,l,r) \
+#define QSPI_EXECUTE_IPCOMMAND(p,seq,len,r) \
   do \
     { \
       qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_IPPTRC); \
       r  = qspi_getreg(p, KINETIS_QSPI_IPCR_OFFSET); \
-      r &= ~(QSPI_IPCR_SEQID_MASK); \
-      r |= QSPI_IPCR_SEQID(l); \
+      r &= ~(QSPI_IPCR_SEQID_MASK | QSPI_IPCR_IDATSZ_MASK); \
+      r |= QSPI_IPCR_SEQID(seq) | QSPI_IPCR_IDATSZ(len); \
       qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
     } \
   while (0);
 
 /* Execute AHB command */
 
-#define QSPI_EXECUTE_AHBCOMMAND(p,l,r) \
+#define QSPI_EXECUTE_AHBCOMMAND(p,seq,r) \
   do \
     { \
       qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_BFPTRC); \
       r  = qspi_getreg(p, KINETIS_QSPI_BFGENCR_OFFSET); \
-      r &= ~(QSPI_IPCR_SEQID_MASK); \
-      r |= QSPI_IPCR_SEQID(l); \
+      r &= ~(QSPI_BFGENCR_SEQID_MASK); \
+      r |= QSPI_BFGENCR_SEQID(seq); \
       qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
     } \
   while (0);
@@ -801,6 +801,65 @@ static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
  * Name: qspi_command
  *
  * Description:
+ *   Write data to TX FIFO (blocking)
+ *
+ * Input Parameters:
+ *   priv    - Device-specific state data
+ *   buffer  - Data buffer
+ *   buflen  - Length of buffer in bytes
+ *
+ * Returned Value:
+ *   Number of bytes transferred
+ *
+ ****************************************************************************/
+
+static uint16_t qspi_write_tx_blocking(struct kinetis_qspidev_s *priv, void **buffer, uint16_t buflen)
+{
+  uint16_t buftrans = 0;
+  uint32_t regval;
+
+  if (IS_ALIGNED(buffer) && IS_ALIGNED(buflen))
+    {
+      uint32_t *buf32 = (uint32_t *)*buffer;
+      while (buftrans < buflen)
+        {
+          QSPI_WAIT_TXFIFO(priv, regval);
+          qspi_putreg(priv, *buf32, KINETIS_QSPI_TBDR_OFFSET);
+          buftrans += sizeof(uint32_t);
+          buf32++;
+        }
+      *buffer = (void *)buf32;
+    }
+  else
+    {
+      uint8_t *buf8 = (uint8_t *)*buffer;
+      while (buftrans < buflen)
+        {
+          uint32_t temp32 = 0;
+          uint16_t len = buflen - buftrans;
+
+          if (len > sizeof(uint32_t))
+            {
+              len = sizeof(uint32_t);
+            }
+
+          qspi_memcpy((uint8_t *)&temp32, buf8, len);
+
+          QSPI_WAIT_TXFIFO(priv, regval);
+          qspi_putreg(priv, temp32, KINETIS_QSPI_TBDR_OFFSET);
+          buftrans += len;
+          buf8 += len;
+        }
+      *buffer = (void *)buf8;
+    }
+
+  return buftrans;
+}
+
+/****************************************************************************
+ * Name: qspi_command
+ *
+ * Description:
  *   Perform one QSPI data transfer
  *
  * Input Parameters:
@@ -817,9 +876,7 @@ static int qspi_command(struct kqspi_dev_s *dev,
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
   uint32_t  regval;
-  uint16_t  buftrans32 = 0;
-  uint16_t  buflen32 = 0;
-  uint32_t *buf32 = NULL;
+  uint16_t buflen = cmdinfo->buflen;
 
   DEBUGASSERT(priv != NULL && cmdinfo != NULL);
 
@@ -862,16 +919,10 @@ static int qspi_command(struct kqspi_dev_s *dev,
 
   if (QSPICMD_ISDATA(cmdinfo->flags))
     {
+      DEBUGASSERT(cmdinfo->buffer != NULL && buflen > 0);
+
       if (QSPICMD_ISWRITE(cmdinfo->flags))
         {
-          DEBUGASSERT(cmdinfo->buffer != NULL &&
-                      IS_ALIGNED(cmdinfo->buffer) &&
-                      cmdinfo->buflen > 0);
-
-          buf32      = cmdinfo->buffer;
-          buflen32   = ALIGN_UP(cmdinfo->buflen) >> 2;
-          buftrans32 = 0;
-
           /* Clear the TX FIFO. */
 
           QSPI_CLEAR_TXFIFO(priv, regval);
@@ -882,44 +933,32 @@ static int qspi_command(struct kqspi_dev_s *dev,
             {
               DEBUGASSERT(cmdinfo->wrenindex < 16);
 
-              QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->wrenindex, regval);
+              QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->wrenindex, 0, regval);
             }
 
           /* Fill the Fifo to prevent underrun before exec. the command. */
 
-          while (buftrans32 < buflen32 && buftrans32 < KINETIS_QSPI_TXFIFO_SIZE32)
-            {
-              QSPI_WAIT_TXFIFO(priv, regval);
-              qspi_putreg(priv, buf32[buftrans32], KINETIS_QSPI_TBDR_OFFSET);
-            }
+          buflen -= qspi_write_tx_blocking(priv, &cmdinfo->buffer,
+              buflen > KINETIS_QSPI_TXFIFO_SIZE ?
+                  KINETIS_QSPI_TXFIFO_SIZE : buflen);
         }
       else
         {
-          DEBUGASSERT(cmdinfo->buffer != NULL &&
-                      IS_ALIGNED(cmdinfo->buffer) &&
-                      cmdinfo->buflen > 0);
-
-          buf32      = cmdinfo->buffer;
-          buflen32   = ALIGN_UP(cmdinfo->buflen) >> 2;
-          buftrans32 = 0;
-
           /* Clear the RX FIFO. */
 
           QSPI_CLEAR_RXFIFO(priv, regval);
         }
-
-      if (QSPICMD_ISIPCMD(cmdinfo->flags))
-        {
-          regval = QSPI_IPCR_SEQID(cmdinfo->cmdindex) | QSPI_IPCR_IDATSZ(cmdinfo->buflen);
-          qspi_putreg(priv, regval, KINETIS_QSPI_IPCR_OFFSET);
-        }
-      else
-        {
-          regval = QSPI_BFGENCR_SEQID(cmdinfo->cmdindex) | QSPI_BFGENCR_(cmdinfo->buflen);
-          qspi_putreg(priv, regval, KINETIS_QSPI_IPCR_OFFSET);
-        }
-
     }
+
+  if (QSPICMD_ISIPCMD(cmdinfo->flags))
+    {
+      QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
+    }
+  else
+    {
+      QSPI_EXECUTE_AHBCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
+    }
+
 
   return OK;
 }
