@@ -143,14 +143,14 @@
 
 /* Execute AHB command */
 
-#define QSPI_EXECUTE_AHBCOMMAND(p,seq,r) \
+#define QSPI_EXECUTE_AHBCOMMAND(p,seq,len,r) \
   do \
     { \
       qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_BFPTRC); \
       r  = qspi_getreg(p, KINETIS_QSPI_BFGENCR_OFFSET); \
       r &= ~(QSPI_BFGENCR_SEQID_MASK); \
       r |= QSPI_BFGENCR_SEQID(seq); \
-      qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
+      qspi_putreg(priv, r, KINETIS_QSPI_BFGENCR_OFFSET); \
     } \
   while (0);
 
@@ -881,7 +881,7 @@ static int qspi_command(struct kqspi_dev_s *dev,
   DEBUGASSERT(priv != NULL && cmdinfo != NULL);
 
 #ifdef CONFIG_DEBUG_SPI_INFO
-  spiinfo("Transfer %s:\n", QSPICMD_ISIPCMD(cmdinfo->flags) ? "IP" : "AHB");
+  spiinfo("Transfer:\n");
   spiinfo("  flags: %02x\n", cmdinfo->flags);
   spiinfo("  lut: %04x\n", cmdinfo->cmdindex);
 
@@ -950,15 +950,7 @@ static int qspi_command(struct kqspi_dev_s *dev,
         }
     }
 
-  if (QSPICMD_ISIPCMD(cmdinfo->flags))
-    {
-      QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
-    }
-  else
-    {
-      QSPI_EXECUTE_AHBCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
-    }
-
+  QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
 
   return OK;
 }

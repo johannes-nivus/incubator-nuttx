@@ -130,17 +130,15 @@
 
 /* QSPI Command Transfer Flags */
 
-#define QSPICMD_IPCMD         (1 << 0)  /* Bit 0: IP command else AHB */
+#define QSPICMD_ADDRESS       (1 << 0)  /* Bit 3: Enable address transfer */
 #define QSPICMD_READDATA      (1 << 1)  /* Bit 1: Enable read data transfer */
 #define QSPICMD_WRITEDATA     (1 << 2)  /* Bit 2: Enable write data transfer */
-#define QSPICMD_ADDRESS       (1 << 0)  /* Bit 3: Enable address transfer */
 
-#define QSPICMD_ISIPCMD(f)    (((f) & QSPICMD_IPCMD) != 0)
+#define QSPICMD_ISADDRESS(f)  (((f) & QSPICMD_ADDRESS) != 0)
 #define QSPICMD_ISDATA(f)     (((f) & (QSPICMD_READDATA \
                                      | QSPICMD_WRITEDATA)) != 0)
 #define QSPICMD_ISREAD(f)     (((f) & QSPICMD_READDATA) != 0)
 #define QSPICMD_ISWRITE(f)    (((f) & QSPICMD_WRITEDATA) != 0)
-#define QSPICMD_ISADDRESS(f)  (((f) & QSPICMD_ADDRESS) != 0)
 
 /* QSPI Command Write Enable */
 
