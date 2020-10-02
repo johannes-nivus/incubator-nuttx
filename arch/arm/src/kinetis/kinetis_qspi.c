@@ -45,9 +45,13 @@
 #include "arm_arch.h"
 #include "barriers.h"
 
-#include "hardware/kinetis_memorymap.h"
-#include "hardware/kinetis_qspi.h"
+#include "kinetis.h"
 #include "kinetis_qspi.h"
+
+#include "hardware/kinetis_memorymap.h"
+#include "hardware/kinetis_pinmux.h"
+#include "hardware/kinetis_sim.h"
+#include "hardware/kinetis_qspi.h"
 
 #ifdef CONFIG_KINETIS_QSPI
 
@@ -57,6 +61,9 @@
 
 /* Configuration ************************************************************/
 
+/* The Watermark value for read transfers (in 32 bit words) */
+
+#define KINETIS_QSPI_RX_WATERMARK    4  /* 16 bytes */
 
 /* Clocking *****************************************************************/
 
@@ -64,7 +71,7 @@
  * a value between 1 and 255
  */
 
-#define KINETIS_QSPI_CLOCK    QSPI_CLOCK_FREQ  /* Frequency of the main clock */
+#define KINETIS_QSPI_CLOCK    BOARD_QSPI_CLOCK_FREQ  /* Frequency of the main clock */
 
 /* DMA timeout.  The value is not critical; we just don't want the system to
  * hang in the event that a DMA does not finish.  This is set to
@@ -86,90 +93,101 @@
 #define ALIGN_UP(n)       (((n)+ALIGN_MASK) & ~ALIGN_MASK)
 #define IS_ALIGNED(n)     (((uint32_t)(n) & ALIGN_MASK) == 0)
 
-/* QSPI "inline" functions **************************************************/
+/* QSPI inline macros **************************************************/
 
 /* Wait while interface busy */
 
-#define QSPI_WAIT_BUSY(p,r) \
+#define QSPI_WAIT_BUSY(p) \
   do \
     { \
-      r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+      uint32_t r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+      if ((r & QSPI_SR_BUSY) == 0) \
+        { \
+          break; \
+        } \
     } \
-  while ((r & QSPI_SR_BUSY) != 0);
+  while (1)
 
 /* Wait for TX FIFO not full */
 
-#define QSPI_WAIT_TXFIFO(p,r) \
+#define QSPI_WAIT_TXFIFO(p) \
   do \
     { \
-      r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+      uint32_t r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+      if ((r & QSPI_SR_TXFULL) == 0 || (r & QSPI_SR_BUSY) == 0) \
+        { \
+          break; \
+        } \
     } \
-  while ((r & QSPI_SR_TXFULL) != 0);
+  while (1)
 
 /* Clear TX FIFO */
 
-#define QSPI_CLEAR_TXFIFO(p,r) \
+#define QSPI_CLEAR_TXFIFO(p) \
   do \
     { \
-      r  = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
+      uint32_t r = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
       r |= QSPI_MCR_CLR_TXF; \
       qspi_putreg(p, r, KINETIS_QSPI_MCR_OFFSET); \
     } \
-  while (0);
+  while (0)
+
+/* Wait for RX FIFO not empty */
+
+#define QSPI_WAIT_RXFIFO(p) \
+  do \
+    { \
+      uint32_t r = qspi_getreg(p, KINETIS_QSPI_SR_OFFSET); \
+      if ((r & QSPI_SR_RXWE) != 0 || (r & QSPI_SR_BUSY) == 0) \
+        { \
+          break; \
+        } \
+    } \
+  while (1)
+
+/* Buffer POP of RX FIFO */
+
+#define QSPI_POP_RXFIFO(p) qspi_putreg(p, QSPI_FR_RBDF, KINETIS_QSPI_FR_OFFSET)
 
 /* Clear RX FIFO */
 
-#define QSPI_CLEAR_RXFIFO(p,r) \
+#define QSPI_CLEAR_RXFIFO(p) \
   do \
     { \
-      r  = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
+      uint32_t r = qspi_getreg(p, KINETIS_QSPI_MCR_OFFSET); \
       r |= QSPI_MCR_CLR_RXF; \
       qspi_putreg(p, r, KINETIS_QSPI_MCR_OFFSET); \
     } \
-  while (0);
+  while (0)
 
 /* Execute IP command */
 
-#define QSPI_EXECUTE_IPCOMMAND(p,seq,len,r) \
+#define QSPI_EXECUTE_IPCOMMAND(p,seq,len) \
   do \
     { \
+      uint32_t r; \
       qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_IPPTRC); \
       r  = qspi_getreg(p, KINETIS_QSPI_IPCR_OFFSET); \
       r &= ~(QSPI_IPCR_SEQID_MASK | QSPI_IPCR_IDATSZ_MASK); \
       r |= QSPI_IPCR_SEQID(seq) | QSPI_IPCR_IDATSZ(len); \
       qspi_putreg(priv, r, KINETIS_QSPI_IPCR_OFFSET); \
     } \
-  while (0);
+  while (0)
 
 /* Execute AHB command */
 
-#define QSPI_EXECUTE_AHBCOMMAND(p,seq,len,r) \
+#define QSPI_EXECUTE_AHBCOMMAND(p,seq,len) \
   do \
     { \
+      uint32_t r; \
       qspi_putreg(p, KINETIS_QSPI_SPTRCLR_OFFSET, QSPI_SPTRCLR_BFPTRC); \
       r  = qspi_getreg(p, KINETIS_QSPI_BFGENCR_OFFSET); \
       r &= ~(QSPI_BFGENCR_SEQID_MASK); \
       r |= QSPI_BFGENCR_SEQID(seq); \
       qspi_putreg(priv, r, KINETIS_QSPI_BFGENCR_OFFSET); \
     } \
-  while (0);
+  while (0)
 
-
-/* Debug ********************************************************************/
-
-/* Check if QSPI debug is enabled */
-
-#ifndef CONFIG_DEBUG_DMA
-#  undef CONFIG_KINETIS_QSPI_DMADEBUG
-#endif
-
-#define DMA_INITIAL      0
-#define DMA_AFTER_SETUP  1
-#define DMA_AFTER_START  2
-#define DMA_CALLBACK     3
-#define DMA_TIMEOUT      3
-#define DMA_END_TRANSFER 4
-#define DMA_NSAMPLES     5
 
 /****************************************************************************
  * Private Types
@@ -191,21 +209,7 @@ struct kinetis_qspidev_s
   bool initialized;            /* TRUE: Controller has been initialized */
   sem_t exclsem;               /* Assures mutually exclusive access to QSPI */
 
-#ifdef CONFIG_KINETIS_QSPI_DMA
-  bool candma;                 /* DMA is supported */
-  uint8_t rxintf;              /* RX hardware interface number */
-  uint8_t txintf;              /* TX hardware interface number */
-  sem_t dmawait;               /* Used to wait for DMA completion */
-  struct wdog_s dmadog;        /* Watchdog that handles DMA timeouts */
-  int result;                  /* DMA result */
-  DMA_HANDLE dmach;            /* QSPI DMA handle */
-#endif
-
   /* Debug stuff */
-
-#ifdef CONFIG_KINETIS_QSPI_DMADEBUG
-  struct kinetis_dmaregs_s dmaregs[DMA_NSAMPLES];
-#endif
 
 #ifdef CONFIG_KINETIS_QSPI_REGDEBUG
   bool     wrlast;             /* Last was a write */
@@ -237,26 +241,6 @@ static inline void qspi_putreg(struct kinetis_qspidev_s *priv, uint32_t value,
 static void     qspi_dumpregs(struct kinetis_qspidev_s *priv, const char *msg);
 #else
 # define        qspi_dumpregs(priv,msg)
-#endif
-
-/* DMA support */
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-#ifdef CONFIG_KINETIS_QSPI_DMADEBUG
-#  define qspi_dma_sample(s,i) kinetis_dmasample((s)->dmach, &(s)->dmaregs[i])
-static void     qspi_dma_sampleinit(struct kinetis_qspidev_s *priv);
-static void     qspi_dma_sampledone(struct kinetis_qspidev_s *priv);
-
-#else
-#  define qspi_dma_sample(s,i)
-#  define qspi_dma_sampleinit(s)
-#  define qspi_dma_sampledone(s)
-
-#endif
-
-static void     qspi_dma_callback(DMA_HANDLE handle, void *arg, int result);
-static inline uintptr_t qspi_regaddr(struct kinetis_qspidev_s *priv,
-                  unsigned int offset);
 #endif
 
 static void     qspi_memcpy(uint8_t *dest, const uint8_t *src,
@@ -307,11 +291,6 @@ static struct kinetis_qspidev_s g_qspi0dev =
   },
   .base              = KINETIS_QSPI0C_BASE,
   .intf              = 0,
-#ifdef CONFIG_KINETIS_QSPI_DMA
-  .candma            = KINETIS_QSPI0_DMA,
-  .rxintf            = XDMACH_QSPI_RX,
-  .txintf            = XDMACH_QSPI_TX,
-#endif
 };
 #endif /* CONFIG_KINETIS_QSPI */
 
@@ -452,200 +431,6 @@ static void qspi_dumpregs(struct kinetis_qspidev_s *priv, const char *msg)
          getreg32(priv->base + KINETIS_QSPI_SR_OFFSET),
          getreg32(priv->base + KINETIS_QSPI_FR_OFFSET),
          getreg32(priv->base + KINETIS_QSPI_RSER_OFFSET));
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_dma_sampleinit
- *
- * Description:
- *   Initialize sampling of DMA registers (if CONFIG_KINETIS_QSPI_DMADEBUG)
- *
- * Input Parameters:
- *   priv - QSPI driver instance
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMADEBUG
-static void qspi_dma_sampleinit(struct kinetis_qspidev_s *priv)
-{
-  /* Put contents of register samples into a known state */
-
-  memset(priv->dmaregs, 0xff, DMA_NSAMPLES * sizeof(struct kinetis_dmaregs_s));
-
-  /* Then get the initial samples */
-
-  kinetis_dmasample(priv->dmach, &priv->dmaregs[DMA_INITIAL]);
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_dma_sampledone
- *
- * Description:
- *   Dump sampled DMA registers
- *
- * Input Parameters:
- *   priv - QSPI driver instance
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMADEBUG
-static void qspi_dma_sampledone(struct kinetis_qspidev_s *priv)
-{
-  /* Sample the final registers */
-
-  kinetis_dmasample(priv->dmach, &priv->dmaregs[DMA_END_TRANSFER]);
-
-  /* Then dump the sampled DMA registers */
-
-  /* Initial register values */
-
-  kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_INITIAL],
-              "Initial Registers");
-
-  /* Register values after DMA setup */
-
-  kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_AFTER_SETUP],
-              "After DMA Setup");
-
-  /* Register values after DMA start */
-
-  kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_AFTER_START],
-              "After DMA Start");
-
-  /* Register values at the time of the TX and RX DMA callbacks
-   * -OR- DMA timeout.
-   *
-   * If the DMA timed out, then there will not be any RX DMA
-   * callback samples.  There is probably no TX DMA callback
-   * samples either, but we don't know for sure.
-   */
-
-  if (priv->result == -ETIMEDOUT)
-    {
-      kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_TIMEOUT],
-                  "At DMA timeout");
-    }
-  else
-    {
-      kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_CALLBACK],
-                  "At DMA callback");
-    }
-
-  kinetis_dmadump(priv->dmach, &priv->dmaregs[DMA_END_TRANSFER],
-              "At End-of-Transfer");
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_dma_timeout
- *
- * Description:
- *   The watchdog timeout setup when a has expired without completion of a
- *   DMA.
- *
- * Input Parameters:
- *   arg    - The argument
- *
- * Returned Value:
- *   None
- *
- * Assumptions:
- *   Always called from the interrupt level with interrupts disabled.
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-static void qspi_dma_timeout(wdparm_t arg)
-{
-  struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)arg;
-  DEBUGASSERT(priv != NULL);
-
-  /* Sample DMA registers at the time of the timeout */
-
-  qspi_dma_sample(priv, DMA_CALLBACK);
-
-  /* Report timeout result, perhaps overwriting any failure reports from
-   * the TX callback.
-   */
-
-  priv->result = -ETIMEDOUT;
-
-  /* Then wake up the waiting thread */
-
-  nxsem_post(&priv->dmawait);
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_dma_callback
- *
- * Description:
- *   This callback function is invoked at the completion of the QSPI RX DMA.
- *
- * Input Parameters:
- *   handle - The DMA handler
- *   arg - A pointer to the chip select structure
- *   result - The result of the DMA transfer
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-static void qspi_dma_callback(DMA_HANDLE handle, void *arg, int result)
-{
-  struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)arg;
-  DEBUGASSERT(priv != NULL);
-
-  /* Cancel the watchdog timeout */
-
-  wd_cancel(&priv->dmadog);
-
-  /* Sample DMA registers at the time of the callback */
-
-  qspi_dma_sample(priv, DMA_CALLBACK);
-
-  /* Report the result of the transfer only if the TX callback has not
-   * already reported an error.
-   */
-
-  if (priv->result == -EBUSY)
-    {
-      /* Save the result of the transfer if no error was previously
-       * reported
-       */
-
-      priv->result = result;
-    }
-
-  /* Then wake up the waiting thread */
-
-  nxsem_post(&priv->dmawait);
-}
-#endif
-
-/****************************************************************************
- * Name: qspi_regaddr
- *
- * Description:
- *   Return the address of an QSPI register
- *
- ****************************************************************************/
-
-#ifdef CONFIG_KINETIS_QSPI_DMA
-static inline uintptr_t qspi_regaddr(struct kinetis_qspidev_s *priv,
-                                    unsigned int offset)
-{
-  return priv->base + offset;
 }
 #endif
 
@@ -798,7 +583,7 @@ static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
 }
 
 /****************************************************************************
- * Name: qspi_command
+ * Name: qspi_write_blocking
  *
  * Description:
  *   Write data to TX FIFO (blocking)
@@ -813,47 +598,108 @@ static uint32_t qspi_setfrequency(struct kqspi_dev_s *dev, uint32_t frequency)
  *
  ****************************************************************************/
 
-static uint16_t qspi_write_tx_blocking(struct kinetis_qspidev_s *priv, void **buffer, uint16_t buflen)
+static size_t qspi_write_blocking(struct kinetis_qspidev_s *priv,
+                                  uint8_t *buffer, size_t buflen)
 {
-  uint16_t buftrans = 0;
-  uint32_t regval;
+  size_t bufdone = 0;
 
   if (IS_ALIGNED(buffer) && IS_ALIGNED(buflen))
     {
-      uint32_t *buf32 = (uint32_t *)*buffer;
-      while (buftrans < buflen)
+      uint32_t *buf32 = (uint32_t *)buffer;
+      while (bufdone < buflen)
         {
-          QSPI_WAIT_TXFIFO(priv, regval);
+          QSPI_WAIT_TXFIFO(priv);
           qspi_putreg(priv, *buf32, KINETIS_QSPI_TBDR_OFFSET);
-          buftrans += sizeof(uint32_t);
+          bufdone += sizeof(uint32_t);
           buf32++;
         }
-      *buffer = (void *)buf32;
     }
   else
     {
-      uint8_t *buf8 = (uint8_t *)*buffer;
-      while (buftrans < buflen)
+      while (bufdone < buflen)
         {
           uint32_t temp32 = 0;
-          uint16_t len = buflen - buftrans;
+          size_t len = buflen - bufdone;
 
           if (len > sizeof(uint32_t))
             {
               len = sizeof(uint32_t);
             }
 
-          qspi_memcpy((uint8_t *)&temp32, buf8, len);
+          qspi_memcpy((uint8_t *)&temp32, buffer, len);
 
-          QSPI_WAIT_TXFIFO(priv, regval);
+          QSPI_WAIT_TXFIFO(priv);
           qspi_putreg(priv, temp32, KINETIS_QSPI_TBDR_OFFSET);
-          buftrans += len;
-          buf8 += len;
+          bufdone += len;
+          buffer += len;
         }
-      *buffer = (void *)buf8;
     }
 
-  return buftrans;
+  return bufdone;
+}
+
+/****************************************************************************
+ * Name: qspi_read_blocking
+ *
+ * Description:
+ *   Read data from RX FIFO (blocking)
+ *
+ * Input Parameters:
+ *   priv    - Device-specific state data
+ *   buffer  - Data buffer
+ *   buflen  - Length of buffer in bytes
+ *
+ * Returned Value:
+ *   Number of bytes transferred
+ *
+ ****************************************************************************/
+
+static size_t qspi_read_blocking(struct kinetis_qspidev_s *priv,
+                                 uint8_t *buffer, size_t buflen)
+{
+  size_t bufdone = 0;
+  uint32_t i;
+
+  if (IS_ALIGNED(buffer) && IS_ALIGNED(buflen))
+    {
+      uint32_t *buf32 = (uint32_t *)buffer;
+      while (bufdone < buflen)
+        {
+          QSPI_WAIT_RXFIFO(priv);
+          for (i = 0; i < KINETIS_QSPI_RX_WATERMARK && bufdone < buflen; i++)
+            {
+              *buf32 = qspi_getreg(priv, KINETIS_QSPI_RBDR_OFFSET + (i << 2));
+              bufdone += sizeof(uint32_t);
+              buf32++;
+            }
+          QSPI_POP_RXFIFO(priv);
+        }
+    }
+  else
+    {
+      while (bufdone < buflen)
+        {
+          QSPI_WAIT_RXFIFO(priv);
+          for (i = 0; i < KINETIS_QSPI_RX_WATERMARK && bufdone < buflen; i++)
+            {
+              uint32_t temp32;
+              size_t len = buflen - bufdone;
+
+              if (len > sizeof(uint32_t))
+                {
+                  len = sizeof(uint32_t);
+                }
+
+              temp32 = qspi_getreg(priv, KINETIS_QSPI_RBDR_OFFSET + (i << 2));
+              qspi_memcpy(buffer, (uint8_t *)&temp32, len);
+              bufdone += len;
+              buffer += len;
+            }
+          QSPI_POP_RXFIFO(priv);
+        }
+    }
+
+  return bufdone;
 }
 
 /****************************************************************************
@@ -875,8 +721,6 @@ static int qspi_command(struct kqspi_dev_s *dev,
                         struct kqspi_cmdinfo_s *cmdinfo)
 {
   struct kinetis_qspidev_s *priv = (struct kinetis_qspidev_s *)dev;
-  uint32_t  regval;
-  uint16_t buflen = cmdinfo->buflen;
 
   DEBUGASSERT(priv != NULL && cmdinfo != NULL);
 
@@ -902,7 +746,7 @@ static int qspi_command(struct kqspi_dev_s *dev,
 
   DEBUGASSERT(cmdinfo->cmdindex < 16);
 
-  QSPI_WAIT_BUSY(priv, regval);
+  QSPI_WAIT_BUSY(priv);
 
   /* Write the instruction address register */
 
@@ -915,43 +759,70 @@ static int qspi_command(struct kqspi_dev_s *dev,
 
     }
 
-  /* Does the command include a write? */
+  /* Does the command include data? */
 
   if (QSPICMD_ISDATA(cmdinfo->flags))
     {
-      DEBUGASSERT(cmdinfo->buffer != NULL && buflen > 0);
+      FAR uint8_t *buffer = (FAR uint8_t *)cmdinfo->buffer;
+
+      DEBUGASSERT(buffer != NULL && cmdinfo->buflen > 0);
 
       if (QSPICMD_ISWRITE(cmdinfo->flags))
         {
+          size_t bufdone;
+
           /* Clear the TX FIFO. */
 
-          QSPI_CLEAR_TXFIFO(priv, regval);
+          QSPI_CLEAR_TXFIFO(priv);
 
-          /* Execute Write Enable command. */
+          /* Execute Write Enable command if configured. */
 
           if (cmdinfo->wrenindex != QSPICMD_INVALID_WREN)
             {
               DEBUGASSERT(cmdinfo->wrenindex < 16);
 
-              QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->wrenindex, 0, regval);
+              QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->wrenindex, 0);
             }
 
           /* Fill the Fifo to prevent underrun before exec. the command. */
 
-          buflen -= qspi_write_tx_blocking(priv, &cmdinfo->buffer,
-              buflen > KINETIS_QSPI_TXFIFO_SIZE ?
-                  KINETIS_QSPI_TXFIFO_SIZE : buflen);
+          bufdone = qspi_write_blocking(priv, buffer,
+              cmdinfo->buflen > KINETIS_QSPI_TXFIFO_SIZE ?
+                  KINETIS_QSPI_TXFIFO_SIZE : cmdinfo->buflen);
+
+          /* Execute. the command. */
+
+          QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex,
+                                 cmdinfo->buflen);
+
+          /* Write the remaining data if present. */
+
+          if (cmdinfo->buflen - bufdone > 0)
+            {
+              qspi_write_blocking(priv, &buffer[bufdone],
+                                  cmdinfo->buflen - bufdone);
+            }
         }
       else
         {
           /* Clear the RX FIFO. */
 
-          QSPI_CLEAR_RXFIFO(priv, regval);
+          QSPI_CLEAR_RXFIFO(priv);
+
+          /* Execute the command. */
+
+          QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex,
+                                 cmdinfo->buflen);
+
+          /* Read the data. */
+
+          qspi_read_blocking(priv, buffer, cmdinfo->buflen);
         }
     }
-
-  QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen, regval);
-
+  else
+    {
+      QSPI_EXECUTE_IPCOMMAND(priv, cmdinfo->cmdindex, cmdinfo->buflen);
+    }
   return OK;
 }
 
@@ -1102,7 +973,7 @@ struct kqspi_dev_s *kinetis_qspi_initialize(int intf)
   struct kinetis_qspidev_s *priv;
   int ret;
 
-  /* The supported SAM parts have only a single QSPI port */
+  /* The supported Kinetis parts have only a single QSPI port */
 
   spiinfo("intf: %d\n", intf);
   DEBUGASSERT(intf >= 0 && intf < KINETIS_NQSPI);
@@ -1116,22 +987,35 @@ struct kqspi_dev_s *kinetis_qspi_initialize(int intf)
        * will be performed multiple times.
        */
 
+      uint32_t regval;
+
       /* Select QSPI0 */
 
       priv = &g_qspi0dev;
 
       /* Enable clocking to the QSPI peripheral */
 
-      kinetis_qspi_enableclk();
+#ifdef KINETIS_SIM_HAS_SCGC2_QSPI
+      regval  = getreg32(KINETIS_SIM_SCGC2);
+      regval |= (SIM_SCGC2_QSPI);
+      putreg32(regval, KINETIS_SIM_SCGC2);
+#endif
+
+      /* Select clock source for the QSPI peripheral */
+
+      regval  = qspi_getreg(priv, KINETIS_QSPI_SOCCR_OFFSET);
+      regval &= ~(QSPI_SOCCR_QSPISRC_MASK);
+      regval |= QSPI_SOCCR_QSPISRC(BOARD_QSPI_CLOCK_SOCCR);
+      qspi_putreg(priv, regval, KINETIS_QSPI_SOCCR_OFFSET);;
 
       /* Configure multiplexed pins as connected on the board. */
 
-      kinetis_configgpio(GPIO_QSPI_CS);
-      kinetis_configgpio(GPIO_QSPI_IO0);
-      kinetis_configgpio(GPIO_QSPI_IO1);
-      kinetis_configgpio(GPIO_QSPI_IO2);
-      kinetis_configgpio(GPIO_QSPI_IO3);
-      kinetis_configgpio(GPIO_QSPI_SCK);
+      kinetis_pinconfig(PIN_QSPI0A_SS0_B);
+      kinetis_pinconfig(PIN_QSPI0A_DATA0);
+      kinetis_pinconfig(PIN_QSPI0A_DATA1);
+      kinetis_pinconfig(PIN_QSPI0A_DATA2);
+      kinetis_pinconfig(PIN_QSPI0A_DATA3);
+      kinetis_pinconfig(PIN_QSPI0A_SCLK);
     }
   else
 #endif
@@ -1152,28 +1036,6 @@ struct kqspi_dev_s *kinetis_qspi_initialize(int intf)
 
       nxsem_init(&priv->exclsem, 0, 1);
 
-#ifdef CONFIG_KINETIS_QSPI_DMA
-      /* Pre-allocate DMA channels. */
-
-      if (priv->candma)
-        {
-          priv->dmach = kinetis_dmachannel(0, 0);
-          if (!priv->dmach)
-            {
-              spierr("ERROR: Failed to allocate the DMA channel\n");
-              priv->candma = false;
-            }
-        }
-
-      /* Initialize the QSPI semaphore that is used to wake up the waiting
-       * thread when the DMA transfer completes.  This semaphore is used for
-       * signaling and, hence, should not have priority inheritance enabled.
-       */
-
-      nxsem_init(&priv->dmawait, 0, 0);
-      nxsem_set_protocol(&priv->dmawait, SEM_PRIO_NONE);
-#endif
-
       /* Perform hardware initialization.  Puts the QSPI into an active
        * state.
        */
@@ -1185,23 +1047,12 @@ struct kqspi_dev_s *kinetis_qspi_initialize(int intf)
           goto errout;
         }
 
-      /* Enable interrupts at the NVIC */
-
       priv->initialized = true;
     }
 
   return &priv->qspi;
 
 errout:
-#ifdef CONFIG_KINETIS_QSPI_DMA
-  nxsem_destroy(&priv->dmawait);
-  if (priv->dmach)
-    {
-      kinetis_dmafree(priv->dmach);
-      priv->dmach = NULL;
-    }
-#endif
-
   nxsem_destroy(&priv->exclsem);
   return NULL;
 }

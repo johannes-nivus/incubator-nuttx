@@ -149,8 +149,16 @@
 
 /* QSPI clocking ****************************************************************/
 
-#define QSPI_CLOCK_FREQ  BOARD_CORECLK_FREQ
-#define QSPI_CLOCK_SOCCR 0
+/* Clock Frequency and clock index must match
+ * In this case: PLLOUT (2 x BOARD_MCG_FREQ)
+ */
+
+#define BOARD_QSPI_SCG_OFFSET  KINETIS_SIM_SCGC2_OFFSET
+#define BOARD_QSPI_CLOCK_SOCCR 3
+
+
+#define BOARD_QSPI_CLOCK_FREQ  BOARD_PLLOUT_FREQ
+#define BOARD_QSPI_CLOCK_SOCCR 3
 
 /* SDHC clocking ****************************************************************/
 
